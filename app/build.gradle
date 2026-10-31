@@ -4,7 +4,8 @@ plugins {
 }
 
 android {
-    // ... твои настройки
+    namespace 'com.example.aicompanion'
+    compileSdk 34
 
     defaultConfig {
         applicationId "com.example.aicompanion"
@@ -13,24 +14,34 @@ android {
         versionCode 1
         versionName "1.0"
 
-        // ВОТ ЭТА СТРОКА ДОБАВЛЯЕТ ПОДДЕРЖКУ 64-БИТНЫХ АРХИТЕКТУР
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        
+        // === ВОТ ЗДЕСЬ 64-БИТНАЯ ПОДДЕРЖКА ===
         ndk {
             abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
         }
     }
-}
 
     buildTypes {
         release {
             minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
+    // Настройки Java
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+
+    // Настройки Kotlin
     kotlinOptions {
         jvmTarget = '17'
+    }
+    
+    buildFeatures {
+        viewBinding true // Если используешь, оставь true. Если нет - можно убрать.
     }
 }
 
@@ -39,7 +50,5 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-    implementation 'org.json:json:20231013'
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+    // Добавляй сюда свои библиотеки, если они были (например, для распознавания речи)
 }
