@@ -15,6 +15,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import java.io.File
 
 class MainActivity : AppCompatActivity() {
 
@@ -29,6 +30,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tts: TextToSpeech
     private val history = JSONArray()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private val MEMORY_FILE = "jarvis_memory.json"
 
     // ВАШ КЛЮЧ
     private val PART1 = "sk-or-v1-732702b2d0cd72cddcb4bca117787bef6fa64"
@@ -63,14 +65,13 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.voiceBtn).setOnClickListener { startVoice() }
         findViewById<Button>(R.id.stopBtn).setOnClickListener { stopAll() }
 
-        // НАСТРОЙКА ГОЛОСА (Пытаемся сделать как у Джарвиса)
+        // НАСТРОЙКА ГОЛОСА
         tts = TextToSpeech(this) { st ->
             if (st == TextToSpeech.SUCCESS) {
                 val result = tts.setLanguage(Locale.UK) 
                 if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                     tts.language = Locale("ru", "RU")
                 }
-                
                 val voices = tts.voices
                 if (voices != null) {
                     for (voice in voices) {
@@ -114,8 +115,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         statusView.text = "Напиши «привет» или нажми 🎤"
+        
+        loadMemory() // Загружаем память при запуске
 
-        // ЗАПУСК ФОНОВОГО РЕЖИМА ДЖАРВИСА
+        // ЗАПУСК ФОНОВОГО РЕЖИМА
         val serviceIntent = Intent(this, JarvisService::class.java)
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent)
@@ -123,7 +126,6 @@ class MainActivity : AppCompatActivity() {
             startService(serviceIntent)
         }
 
-        // ПРОВЕРКА: ЕСЛИ НАС ВЫЗВАЛИ СЛОВОМ "ДЖАРВИС"
         if (intent?.getStringExtra("VOICE_COMMAND") != null) {
             val commandText = intent.getStringExtra("VOICE_COMMAND")
             if (commandText != null) {
@@ -131,6 +133,32 @@ class MainActivity : AppCompatActivity() {
                 send()
             }
         }
+    }
+    
+    // СОХРАНЕНИЕ И ЗАГРУЗКА ПАМЯТИ
+    private fun saveMemory() {
+        try {
+            val file = File(filesDir, MEMORY_FILE)
+            file.writeText(history.toString())
+        } catch (e: Exception) { e.printStackTrace() }
+    }
+
+    private fun loadMemory() {
+        try {
+            val file = File(filesDir, MEMORY_FILE)
+            if (file.exists()) {
+                val jsonArray = JSONArray(file.readText())
+                for (i in 0 until jsonArray.length()) {
+                    history.put(jsonArray.get(i))
+                    val msg = jsonArray.getJSONObject(i)
+                    if (msg.getString("role") == "user") {
+                        addChat("Вы", msg.getString("content"))
+                    } else {
+                        addChat("ИИ", msg.getString("content"))
+                    }
+                }
+            }
+        } catch (e: Exception) { e.printStackTrace() }
     }
 
     private fun setPet(mood: String) {
@@ -157,6 +185,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun askAi(userText: String) {
         history.put(JSONObject().put("role", "user").put("content", userText))
+        saveMemory() // Сохраняем после каждого сообщения
+
         val messages = JSONArray().put(
             JSONObject().put("role", "system").put("content", SYSTEM_PROMPT))
         for (i in 0 until history.length()) messages.put(history.get(i))
@@ -179,11 +209,12 @@ class MainActivity : AppCompatActivity() {
                 val reply = json.getJSONArray("choices")
                     .getJSONObject(0).getJSONObject("message").getString("content")
                 history.put(JSONObject().put("role", "assistant").put("content", reply))
+                saveMemory() // Сохраняем ответ ИИ
                 handleReply(reply)
             } catch (e: Exception) {
                 statusView.text = "Ошибка: ${e.message}"
                 setPet("sad")
-                addChat("Система", "Не удалось получить ответ. Проверьте интернет и ключ.")
+                addChat("Система", "Не удалось получить ответ.")
             }
         }
     }
