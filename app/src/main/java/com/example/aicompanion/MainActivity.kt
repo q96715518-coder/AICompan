@@ -15,49 +15,37 @@ import java.util.Locale
 class MainActivity : AppCompatActivity() {
 
     private var tts: TextToSpeech? = null
-    private var isTtsReady = false
     private val PERMISSION_REQUEST_CODE = 123
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // ВАЖНО: Если у тебя есть файл разметки, раскомментируй строку ниже!
-        // Если ты создавал кнопку программно, оставь как есть.
-        setContentView(R.layout.activity_main) 
+        // ВАЖНО: Если у тебя есть файл activity_main.xml, раскомментируй строку ниже
+        // setContentView(R.layout.activity_main)
 
-        // Инициализация TTS
         initTts()
-
-        // Проверка разрешений
-        checkPermissions()
+        checkPermissionsAndStartService()
     }
 
     private fun initTts() {
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                val result = tts?.setLanguage(Locale("ru", "RU"))
-                if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    Toast.makeText(this, "Русский язык не поддерживается TTS", Toast.LENGTH_SHORT).show()
-                } else {
-                    isTtsReady = true
-                }
+                tts?.language = Locale("ru", "RU")
             } else {
-                Toast.makeText(this, "Ошибка инициализации TTS", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Ошибка TTS", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
-    // Та самая функция speak
     fun speak(text: String) {
-        if (isTtsReady && tts != null) {
+        if (tts != null) {
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "JarvisUtteranceId")
         } else {
-            // Если TTS еще не готов, просто показываем текст на экране
             Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun checkPermissions() {
+    private fun checkPermissionsAndStartService() {
         val permissions = mutableListOf<String>()
         
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -70,6 +58,8 @@ class MainActivity : AppCompatActivity() {
 
         if (permissions.isNotEmpty()) {
             ActivityCompat.requestPermissions(this, permissions.toTypedArray(), PERMISSION_REQUEST_CODE)
+        } else {
+            startJarvisService()
         }
     }
 
@@ -77,10 +67,19 @@ class MainActivity : AppCompatActivity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == PERMISSION_REQUEST_CODE) {
             if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
-                // Разрешения получены
+                startJarvisService()
             } else {
-                Toast.makeText(this, "Джарвису нужны разрешения для работы!", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Джарвису нужны разрешения!", Toast.LENGTH_LONG).show()
             }
+        }
+    }
+
+    private fun startJarvisService() {
+        val serviceIntent = Intent(this, JarvisService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
         }
     }
 
