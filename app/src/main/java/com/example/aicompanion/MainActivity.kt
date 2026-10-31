@@ -12,61 +12,52 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import java.util.Locale
 
-// Твои импорты (если ты использовал ViewBinding, Retrofit или другие библиотеки, 
-// убедись, что они тоже есть в списке выше)
-
 class MainActivity : AppCompatActivity() {
 
-    // Переменные для работы TTS (Озвучка)
     private var tts: TextToSpeech? = null
+    private var isTtsReady = false
     private val PERMISSION_REQUEST_CODE = 123
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Твой setContentView (если он у тебя был в коде, он останется здесь)
-        // setContentView(R.layout.activity_main) 
+        // ВАЖНО: Если у тебя есть файл разметки, раскомментируй строку ниже!
+        // Если ты создавал кнопку программно, оставь как есть.
+        setContentView(R.layout.activity_main) 
 
-        // 1. Инициализируем голосового движка
+        // Инициализация TTS
         initTts()
 
-        // 2. Твой код инициализации кнопок, полей и т.д.
-        // ...
-
-        // 3. Проверяем разрешения (микрофон, уведомления)
-        checkPermissionsAndStartService()
+        // Проверка разрешений
+        checkPermissions()
     }
 
-    // === БЛОК ОЗВУЧКИ (TTS) ===
-    
     private fun initTts() {
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                // Устанавливаем русский язык
                 val result = tts?.setLanguage(Locale("ru", "RU"))
                 if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    Toast.makeText(this, "Русский язык не поддерживается", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Русский язык не поддерживается TTS", Toast.LENGTH_SHORT).show()
+                } else {
+                    isTtsReady = true
                 }
             } else {
-                Toast.makeText(this, "Ошибка TTS", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Ошибка инициализации TTS", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
-    // ВОТ ТА САМАЯ ФУНКЦИЯ, КОТОРОЙ НЕ ХВАТАЛО НА СТРОКАХ 177 и 237
+    // Та самая функция speak
     fun speak(text: String) {
-        // Если tts еще не готов, инициализируем на ходу
-        if (tts == null) {
-            initTts()
+        if (isTtsReady && tts != null) {
+            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "JarvisUtteranceId")
+        } else {
+            // Если TTS еще не готов, просто показываем текст на экране
+            Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
         }
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "JarvisUtteranceId")
     }
 
-    // ========================
-
-    // === БЛОК РАЗРЕШЕНИЙ И СЕРВИСА ===
-
-    private fun checkPermissionsAndStartService() {
+    private fun checkPermissions() {
         val permissions = mutableListOf<String>()
         
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -79,8 +70,6 @@ class MainActivity : AppCompatActivity() {
 
         if (permissions.isNotEmpty()) {
             ActivityCompat.requestPermissions(this, permissions.toTypedArray(), PERMISSION_REQUEST_CODE)
-        } else {
-            startJarvisService()
         }
     }
 
@@ -88,24 +77,13 @@ class MainActivity : AppCompatActivity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == PERMISSION_REQUEST_CODE) {
             if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
-                startJarvisService()
+                // Разрешения получены
             } else {
                 Toast.makeText(this, "Джарвису нужны разрешения для работы!", Toast.LENGTH_LONG).show()
             }
         }
     }
 
-    private fun startJarvisService() {
-        val serviceIntent = Intent(this, JarvisService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent)
-        } else {
-            startService(serviceIntent)
-        }
-    }
-
-    // === ОЧИСТКА ПАМЯТИ ===
-    
     override fun onDestroy() {
         tts?.stop()
         tts?.shutdown()
