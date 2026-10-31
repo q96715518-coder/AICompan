@@ -1,8 +1,12 @@
 package com.example.aicompanion
 
+import android.content.Context
 import android.content.Intent
+import android.hardware.camera2.CameraManager
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
+import android.provider.AlarmClock
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
 import android.widget.*
@@ -13,9 +17,10 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.Locale
-import java.util.concurrent.TimeUnit
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.*
+import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
 
@@ -32,7 +37,6 @@ class MainActivity : AppCompatActivity() {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val MEMORY_FILE = "jarvis_memory.json"
 
-    // ВАШ КЛЮЧ
     private val PART1 = "sk-or-v1-732702b2d0cd72cddcb4bca117787bef6fa64"
     private val PART2 = "632bd6dad98adfbcd139cc8946d"
     
@@ -43,11 +47,15 @@ class MainActivity : AppCompatActivity() {
         Ты — голосовой ИИ-ассистент. Команды:
         [CMD:open_browser] — браузер
         [CMD:search:ЗАПРОС] — поиск
-        [CMD:youtube:ЗАПРОС] — YouTube
-        [CMD:open_app:ИМЯ] — открыть приложение (ютуб, телеграм, whatsapp, вк, камера, браузер, калькулятор)
+        [CMD:open_app:ИМЯ] — открыть приложение
+        [CMD:volume_up] — громче
+        [CMD:volume_down] — тише
+        [CMD:mute] — выключить звук
+        [CMD:torch_on] — фонарик вкл
+        [CMD:torch_off] — фонарик выкл
+        [CMD:alarm:ЧЧ:ММ] — будильник
+        [CMD:timer:МИНУТЫ] — таймер
         [CMD:call:НОМЕР] — позвонить
-        [CMD:time] — время
-        [CMD:date] — дата
         Если не команда — отвечай коротко по-русски.
     """.trimIndent()
 
@@ -65,36 +73,29 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.voiceBtn).setOnClickListener { startVoice() }
         findViewById<Button>(R.id.stopBtn).setOnClickListener { stopAll() }
 
-        // НАСТРОЙКА ГОЛОСА
+        // НАСТРОЙКА ГОЛОСА (КАК АЛИСА)
         tts = TextToSpeech(this) { st ->
             if (st == TextToSpeech.SUCCESS) {
-                val result = tts.setLanguage(Locale.UK) 
-                if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    tts.language = Locale("ru", "RU")
-                }
+                tts.language = Locale("ru", "RU")
                 val voices = tts.voices
                 if (voices != null) {
                     for (voice in voices) {
-                        if (voice.name.contains("male", ignoreCase = true) || voice.name.contains("en-gb", ignoreCase = true)) {
+                        if (voice.name.contains("female", ignoreCase = true) || voice.name.contains("ru-ru-x-", ignoreCase = true)) {
                             tts.voice = voice
                             break
                         }
                     }
                 }
-                tts.setPitch(0.8f) 
-                tts.setSpeechRate(1.0f)
+                tts.setPitch(1.1f)
+                tts.setSpeechRate(0.95f)
             }
         }
 
         val quick = listOf(
-            "🌐 Браузер" to "открой браузер",
-            "🔍 Поиск" to "найди в интернете ",
-            "▶ YouTube" to "найди на ютубе ",
-            "📱 Ютуб" to "открой ютуб",
-            "✈ Телеграм" to "открой телеграм",
-            "💬 WhatsApp" to "открой whatsapp",
-            "📞 Звонок" to "позвони ",
-            "🕒 Время" to "сколько времени",
+            "🌐 Браузер" to "открой браузер", "🔦 Фонарик" to "включи фонарик",
+            "🔊 Громче" to "сделай громче", "🔉 Тише" to "сделай тише",
+            "📱 Ютуб" to "открой ютуб", "✈ Телеграм" to "открой телеграм",
+            "💬 WhatsApp" to "открой whatsapp", "🕒 Время" to "сколько времени",
             "📅 Дата" to "какое сегодня число"
         )
         quick.forEach { (label, cmd) ->
@@ -107,6 +108,9 @@ class MainActivity : AppCompatActivity() {
                     lowerCmd.contains("ютуб") || lowerCmd.contains("youtube") -> { openApp("youtube"); return@setOnClickListener }
                     lowerCmd.contains("телеграм") -> { openApp("телеграм"); return@setOnClickListener }
                     lowerCmd.contains("whatsapp") -> { openApp("whatsapp"); return@setOnClickListener }
+                    lowerCmd.contains("фонарик") -> { toggleTorch(true); reply("Фонарик включен."); return@setOnClickListener }
+                    lowerCmd.contains("громче") -> { adjustVolume(true); reply("Сделала громче."); return@setOnClickListener }
+                    lowerCmd.contains("тише") -> { adjustVolume(false); reply("Сделала тише."); return@setOnClickListener }
                 }
                 input.setText(cmd)
                 if (!cmd.endsWith(" ")) send()
@@ -115,32 +119,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         statusView.text = "Напиши «привет» или нажми 🎤"
-        
-        loadMemory() // Загружаем память при запуске
-
-        // ЗАПУСК ФОНОВОГО РЕЖИМА
-        val serviceIntent = Intent(this, JarvisService::class.java)
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent)
-        } else {
-            startService(serviceIntent)
-        }
-
-        if (intent?.getStringExtra("VOICE_COMMAND") != null) {
-            val commandText = intent.getStringExtra("VOICE_COMMAND")
-            if (commandText != null) {
-                input.setText(commandText)
-                send()
-            }
-        }
+        loadMemory()
     }
-    
-    // СОХРАНЕНИЕ И ЗАГРУЗКА ПАМЯТИ
+
     private fun saveMemory() {
-        try {
-            val file = File(filesDir, MEMORY_FILE)
-            file.writeText(history.toString())
-        } catch (e: Exception) { e.printStackTrace() }
+        try { File(filesDir, MEMORY_FILE).writeText(history.toString()) } catch (e: Exception) {}
     }
 
     private fun loadMemory() {
@@ -151,21 +134,15 @@ class MainActivity : AppCompatActivity() {
                 for (i in 0 until jsonArray.length()) {
                     history.put(jsonArray.get(i))
                     val msg = jsonArray.getJSONObject(i)
-                    if (msg.getString("role") == "user") {
-                        addChat("Вы", msg.getString("content"))
-                    } else {
-                        addChat("ИИ", msg.getString("content"))
-                    }
+                    if (msg.getString("role") == "user") addChat("Вы", msg.getString("content"))
+                    else addChat("ИИ", msg.getString("content"))
                 }
             }
-        } catch (e: Exception) { e.printStackTrace() }
+        } catch (e: Exception) {}
     }
 
     private fun setPet(mood: String) {
-        val m = mapOf(
-            "neutral" to "(•‿•)", "happy" to "(^‿^)", "think" to "(・_・)",
-            "sad" to "(ಥ_ಥ)", "talk" to "(°o°)", "listen" to "(◉_◉)"
-        )
+        val m = mapOf("neutral" to "(•‿•)", "happy" to "(^‿^)", "think" to "(・_・)", "sad" to "(ಥ_ಥ)", "talk" to "(°o°)", "listen" to "(◉_◉)")
         petView.text = m[mood] ?: "(•‿•)"
     }
 
@@ -185,19 +162,19 @@ class MainActivity : AppCompatActivity() {
 
     private fun askAi(userText: String) {
         history.put(JSONObject().put("role", "user").put("content", userText))
-        saveMemory() // Сохраняем после каждого сообщения
+        saveMemory()
 
-        val messages = JSONArray().put(
-            JSONObject().put("role", "system").put("content", SYSTEM_PROMPT))
+        val currentTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+        val currentDate = SimpleDateFormat("EEEE, d MMMM yyyy", Locale("ru")).format(Date())
+        val fullPrompt = SYSTEM_PROMPT + "\nСейчас время: $currentTime, дата: $currentDate."
+
+        val messages = JSONArray().put(JSONObject().put("role", "system").put("content", fullPrompt))
         for (i in 0 until history.length()) messages.put(history.get(i))
 
-        val body = JSONObject()
-            .put("model", MODEL)
-            .put("messages", messages)
+        val body = JSONObject().put("model", MODEL).put("messages", messages)
             .toString().toRequestBody("application/json".toMediaType())
 
-        val req = Request.Builder()
-            .url(URL)
+        val req = Request.Builder().url(URL)
             .addHeader("Authorization", "Bearer ${PART1 + PART2}")
             .addHeader("Content-Type", "application/json")
             .post(body).build()
@@ -206,10 +183,9 @@ class MainActivity : AppCompatActivity() {
             try {
                 val res = withContext(Dispatchers.IO) { client.newCall(req).execute() }
                 val json = JSONObject(res.body?.string() ?: "{}")
-                val reply = json.getJSONArray("choices")
-                    .getJSONObject(0).getJSONObject("message").getString("content")
+                val reply = json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
                 history.put(JSONObject().put("role", "assistant").put("content", reply))
-                saveMemory() // Сохраняем ответ ИИ
+                saveMemory()
                 handleReply(reply)
             } catch (e: Exception) {
                 statusView.text = "Ошибка: ${e.message}"
@@ -243,19 +219,55 @@ class MainActivity : AppCompatActivity() {
                 open("https://google.com/search?q=" + Uri.encode(q))
                 reply("Ищу: $q")
             }
-            cmd.startsWith("youtube:") -> {
-                val q = cmd.removePrefix("youtube:")
-                open("https://youtube.com/results?search_query=" + Uri.encode(q))
-                reply("Ищу на YouTube: $q")
-            }
             cmd.startsWith("open_app:") -> openApp(cmd.removePrefix("open_app:").trim())
+            cmd == "volume_up" -> { adjustVolume(true); reply("Сделала громче.") }
+            cmd == "volume_down" -> { adjustVolume(false); reply("Сделала тише.") }
+            cmd == "mute" -> { setMute(); reply("Звук выключен.") }
+            cmd == "torch_on" -> { toggleTorch(true); reply("Фонарик включен.") }
+            cmd == "torch_off" -> { toggleTorch(false); reply("Фонарик выключен.") }
+            cmd.startsWith("alarm:") -> {
+                val time = cmd.removePrefix("alarm:").split(":")
+                val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
+                    putExtra(AlarmClock.EXTRA_HOUR, time.getOrNull(0)?.toIntOrNull() ?: 7)
+                    putExtra(AlarmClock.EXTRA_MINUTES, time.getOrNull(1)?.toIntOrNull() ?: 0)
+                }
+                startActivity(intent)
+                reply("Будильник поставлен.")
+            }
+            cmd.startsWith("timer:") -> {
+                val mins = cmd.removePrefix("timer:").toIntOrNull() ?: 5
+                val intent = Intent(AlarmClock.ACTION_SET_TIMER).apply {
+                    putExtra(AlarmClock.EXTRA_LENGTH, mins * 60)
+                }
+                startActivity(intent)
+                reply("Таймер на $mins минут.")
+            }
             cmd.startsWith("call:") -> {
                 startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + cmd.removePrefix("call:"))))
                 reply("Набираю номер.")
             }
-            cmd == "time" -> reply("Сейчас " + java.text.SimpleDateFormat("HH:mm", Locale.getDefault()).format(java.util.Date()))
-            cmd == "date" -> reply("Сегодня " + java.text.SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(java.util.Date()))
             else -> reply("Команда: $cmd")
+        }
+    }
+
+    private fun adjustVolume(up: Boolean) {
+        val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val dir = if (up) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER
+        repeat(5) { am.adjustStreamVolume(AudioManager.STREAM_MUSIC, dir, 0) }
+    }
+
+    private fun setMute() {
+        val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0)
+    }
+
+    private fun toggleTorch(on: Boolean) {
+        try {
+            val cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            val cameraId = cameraManager.cameraIdList[0]
+            cameraManager.setTorchMode(cameraId, on)
+        } catch (e: Exception) {
+            addChat("Система", "Ошибка фонарика: ${e.message}")
         }
     }
 
@@ -268,23 +280,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun open(url: String) {
-        try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-        catch (_: Exception) {}
+        try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch (_: Exception) {}
     }
 
     private fun openApp(name: String) {
         val map = mapOf(
-            "ютуб" to "com.google.android.youtube",
-            "youtube" to "com.google.android.youtube",
-            "телеграм" to "org.telegram.messenger",
-            "telegram" to "org.telegram.messenger",
-            "whatsapp" to "com.whatsapp",
-            "вк" to "com.vkontakte.android",
-            "камера" to "com.android.camera",
-            "браузер" to "com.android.chrome",
-            "хром" to "com.android.chrome",
-            "калькулятор" to "com.google.android.calculator",
-            "настройки" to "com.android.settings"
+            "ютуб" to "com.google.android.youtube", "youtube" to "com.google.android.youtube",
+            "телеграм" to "org.telegram.messenger", "whatsapp" to "com.whatsapp",
+            "вк" to "com.vkontakte.android", "камера" to "com.android.camera",
+            "браузер" to "com.android.chrome", "калькулятор" to "com.google.android.calculator"
         )
         val pkg = map[name.lowercase()]
         if (pkg != null) {
@@ -300,8 +304,7 @@ class MainActivity : AppCompatActivity() {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
         }
-        try { startActivityForResult(i, 100) }
-        catch (_: Exception) { Toast.makeText(this, "Голос недоступен", Toast.LENGTH_SHORT).show() }
+        try { startActivityForResult(i, 100) } catch (_: Exception) {}
     }
 
     override fun onActivityResult(req: Int, res: Int, data: Intent?) {
@@ -313,12 +316,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun speak(t: String) { tts.speak(t, TextToSpeech.QUEUE_FLUSH, null, "id") }
-
-    private fun stopAll() {
-        tts.stop(); statusView.text = "Остановлено."; setPet("neutral")
-    }
-
-    override fun onDestroy() {
-        scope.cancel(); tts.stop(); tts.shutdown(); super.onDestroy()
-    }
+    private fun stopAll() { tts.stop(); statusView.text = "Остановлено."; setPet("neutral") }
+    override fun onDestroy() { scope.cancel(); tts.stop(); tts.shutdown(); super.onDestroy() }
 }
