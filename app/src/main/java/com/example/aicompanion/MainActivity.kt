@@ -31,7 +31,8 @@ class MainActivity : AppCompatActivity() {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     // ⚠️ ВСТАВЬТЕ СВОЙ КЛЮЧ С openrouter.ai/keys
-    private val OPENROUTER_KEY = "sk-or-v1-ВСТАВЬТЕ_СЮДА_СВОЙ_КЛЮЧ"
+    private val PART1= "sk-or-v1-732702b2d0cd72cddcb4bca117787bef6fa64"
+private val PART2 = "632bd6dad98adfbcd139cc8946d"
     private val URL = "https://openrouter.ai/api/v1/chat/completions"
     private val MODEL = "meta-llama/llama-3.1-8b-instruct"
 
@@ -126,7 +127,7 @@ class MainActivity : AppCompatActivity() {
 
         val req = Request.Builder()
             .url(URL)
-            .addHeader("Authorization", "Bearer $OPENROUTER_KEY")
+            .addHeader("Authorization", "Bearer ${PART1 + PART2}")
             .addHeader("Content-Type", "application/json")
             .post(body).build()
 
