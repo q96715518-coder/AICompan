@@ -14,9 +14,6 @@ android {
         versionCode 1
         versionName "1.0"
 
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        
-        // === ВОТ ЗДЕСЬ 64-БИТНАЯ ПОДДЕРЖКА ===
         ndk {
             abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
         }
@@ -28,29 +25,18 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
-
-    // Настройки Java
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
-
-    // Настройки Kotlin
     kotlinOptions {
         jvmTarget = '17'
-    }
-    
-    buildFeatures {
-        viewBinding true // Если используешь, оставь true. Если нет - можно убрать.
     }
 }
 
 dependencies {
-    // ... твои остальные зависимости
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
-    
-    // ВОТ ОНИ - БИБЛИОТЕКИ ДЛЯ ИНТЕРНЕТА (OkHttp)
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 }
