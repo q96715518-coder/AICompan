@@ -64,8 +64,28 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.stopBtn).setOnClickListener { stopAll() }
 
         tts = TextToSpeech(this) { st ->
-            if (st == TextToSpeech.SUCCESS) tts.language = Locale("ru", "RU")
+    if (st == TextToSpeech.SUCCESS) {
+        // Пытаемся включить британский английский для эффекта Джарвиса
+        val result = tts.setLanguage(Locale.UK) 
+        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+            tts.language = Locale("ru", "RU") // Если нет, оставляем русский
         }
+        
+        // Ищем мужской голос в системе
+        val voices = tts.voices
+        if (voices != null) {
+            for (voice in voices) {
+                if (voice.name.contains("male", ignoreCase = true) || voice.name.contains("en-gb", ignoreCase = true)) {
+                    tts.voice = voice
+                    break
+                }
+            }
+        }
+        // Делаем голос чуть ниже (эффект спокойного ИИ)
+        tts.setPitch(0.8f) 
+        tts.setSpeechRate(1.0f)
+    }
+}
 
         val quick = listOf(
             "🌐 Браузер" to "открой браузер",
