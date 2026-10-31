@@ -1,1 +1,1 @@
-# AICompan
+# AICompanion
