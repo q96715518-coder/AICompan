@@ -21,6 +21,11 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.OkHttpClient
+import java.io.IOException
 
 class JarvisService : Service() {
     private var speechRecognizer: android.speech.SpeechRecognizer? = null
