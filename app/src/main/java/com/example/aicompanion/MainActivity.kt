@@ -30,7 +30,7 @@ class MainActivity : AppCompatActivity() {
     private val history = JSONArray()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
-    // ВАШ КЛЮЧ (разбит на две части)
+    // ВАШ КЛЮЧ
     private val PART1 = "sk-or-v1-732702b2d0cd72cddcb4bca117787bef6fa64"
     private val PART2 = "632bd6dad98adfbcd139cc8946d"
     
@@ -83,6 +83,13 @@ class MainActivity : AppCompatActivity() {
             b.text = label
             b.textSize = 11f
             b.setOnClickListener {
+                // УМНАЯ ПРОВЕРКА: Если это прямая команда открытия, выполняем сразу!
+                val lowerCmd = cmd.lowercase()
+                when {
+                    lowerCmd.contains("ютуб") || lowerCmd.contains("youtube") -> { openApp("youtube"); return@setOnClickListener }
+                    lowerCmd.contains("телеграм") -> { openApp("телеграм"); return@setOnClickListener }
+                    lowerCmd.contains("whatsapp") -> { openApp("whatsapp"); return@setOnClickListener }
+                }
                 input.setText(cmd)
                 if (!cmd.endsWith(" ")) send()
             }
