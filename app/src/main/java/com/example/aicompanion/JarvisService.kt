@@ -9,7 +9,8 @@ import androidx.core.app.NotificationCompat
 import java.util.Locale
 
 class JarvisService : Service() {
-    private lateinit var speechRecognizer: android.speech.SpeechRecognizer
+    private var speechRecognizer: android.speech.SpeechRecognizer? = null
+    private var isListening = false
 
     override fun onCreate() {
         super.onCreate()
@@ -21,17 +22,34 @@ class JarvisService : Service() {
             .build()
         startForeground(1, notification)
 
+        startListening()
+    }
+
+    private fun startListening() {
+        if (isListening) return
+        
         speechRecognizer = android.speech.SpeechRecognizer.createSpeechRecognizer(this)
+        
+        // Настройка интента для долгого прослушивания без пауз
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
+            // Увеличиваем время ожидания тишины (в миллисекундах), чтобы он не отключался сразу
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2000) 
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000)
         }
 
-        speechRecognizer.setRecognitionListener(object : android.speech.RecognitionListener {
+        speechRecognizer?.setRecognitionListener(object : android.speech.RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {
+                isListening = true
+            }
+
             override fun onResults(results: Bundle?) {
+                isListening = false
                 val matches = results?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)
                 val text = matches?.get(0)?.lowercase(Locale.getDefault()) ?: ""
                 
+                // Если услышали "Джарвис"
                 if (text.contains("джарвис") || text.contains("jarvis")) {
                     val mainIntent = Intent(Intent.ACTION_VIEW, null, this@JarvisService, MainActivity::class.java).apply {
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -39,23 +57,43 @@ class JarvisService : Service() {
                     }
                     startActivity(mainIntent)
                 }
-                speechRecognizer.startListening(intent)
+                // Мгновенный перезапуск прослушивания
+                restartListening()
             }
 
             override fun onError(error: Int) {
-                speechRecognizer.startListening(intent)
+                isListening = false
+                // Если произошла ошибка (например, тишина), мгновенно перезапускаем
+                restartListening()
             }
 
-            override fun onReadyForSpeech(params: Bundle?) {}
             override fun onBeginningOfSpeech() {}
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() {}
+            override fun onEndOfSpeech() { isListening = false }
             override fun onPartialResults(partialResults: Bundle?) {}
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
 
-        speechRecognizer.startListening(intent)
+        speechRecognizer?.startListening(intent)
+    }
+
+    private fun restartListening() {
+        // Небольшая задержка 100мс, чтобы система успела освободить микрофон
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (speechRecognizer == null) {
+                startListening()
+            } else {
+                // Если распознаватель уже есть, просто перезапускаем его с тем же интентом
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2000)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000)
+                }
+                speechRecognizer?.startListening(intent)
+            }
+        }, 100)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -65,7 +103,7 @@ class JarvisService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        speechRecognizer.destroy()
+        speechRecognizer?.destroy()
         super.onDestroy()
     }
 
