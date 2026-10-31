@@ -30,9 +30,10 @@ class MainActivity : AppCompatActivity() {
     private val history = JSONArray()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
-    // ⚠️ ВСТАВЬТЕ СВОЙ КЛЮЧ С openrouter.ai/keys
-    private val PART1= "sk-or-v1-732702b2d0cd72cddcb4bca117787bef6fa64"
-private val PART2 = "632bd6dad98adfbcd139cc8946d"
+    // ВАШ КЛЮЧ (разбит на две части)
+    private val PART1 = "sk-or-v1-732702b2d0cd72cddcb4bca117787bef6fa64"
+    private val PART2 = "632bd6dad98adfbcd139cc8946d"
+    
     private val URL = "https://openrouter.ai/api/v1/chat/completions"
     private val MODEL = "meta-llama/llama-3.1-8b-instruct"
 
@@ -41,7 +42,7 @@ private val PART2 = "632bd6dad98adfbcd139cc8946d"
         [CMD:open_browser] — браузер
         [CMD:search:ЗАПРОС] — поиск
         [CMD:youtube:ЗАПРОС] — YouTube
-        [CMD:open_app:ИМЯ] — открыть приложение (ютуб, телеграм, whatsapp, вк, камера)
+        [CMD:open_app:ИМЯ] — открыть приложение (ютуб, телеграм, whatsapp, вк, камера, браузер, калькулятор)
         [CMD:call:НОМЕР] — позвонить
         [CMD:time] — время
         [CMD:date] — дата
@@ -66,7 +67,6 @@ private val PART2 = "632bd6dad98adfbcd139cc8946d"
             if (st == TextToSpeech.SUCCESS) tts.language = Locale("ru", "RU")
         }
 
-        // Быстрые кнопки
         val quick = listOf(
             "🌐 Браузер" to "открой браузер",
             "🔍 Поиск" to "найди в интернете ",
@@ -205,18 +205,18 @@ private val PART2 = "632bd6dad98adfbcd139cc8946d"
 
     private fun openApp(name: String) {
         val map = mapOf(
-    "ютуб" to "com.google.android.youtube",
-    "youtube" to "com.google.android.youtube",
-    "телеграм" to "org.telegram.messenger",
-    "telegram" to "org.telegram.messenger",
-    "whatsapp" to "com.whatsapp",
-    "вк" to "com.vkontakte.android",
-    "камера" to "com.android.camera",
-    "браузер" to "com.android.chrome",
-    "хром" to "com.android.chrome",
-    "калькулятор" to "com.google.android.calculator",
-    "настройки" to "com.android.settings"
-)
+            "ютуб" to "com.google.android.youtube",
+            "youtube" to "com.google.android.youtube",
+            "телеграм" to "org.telegram.messenger",
+            "telegram" to "org.telegram.messenger",
+            "whatsapp" to "com.whatsapp",
+            "вк" to "com.vkontakte.android",
+            "камера" to "com.android.camera",
+            "браузер" to "com.android.chrome",
+            "хром" to "com.android.chrome",
+            "калькулятор" to "com.google.android.calculator",
+            "настройки" to "com.android.settings"
+        )
         val pkg = map[name.lowercase()]
         if (pkg != null) {
             val i = packageManager.getLaunchIntentForPackage(pkg)
