@@ -205,14 +205,18 @@ private val PART2 = "632bd6dad98adfbcd139cc8946d"
 
     private fun openApp(name: String) {
         val map = mapOf(
-            "ютуб" to "com.google.android.youtube",
-            "youtube" to "com.google.android.youtube",
-            "телеграм" to "org.telegram.messenger",
-            "telegram" to "org.telegram.messenger",
-            "whatsapp" to "com.whatsapp",
-            "вк" to "com.vkontakte.android",
-            "камера" to "com.android.camera"
-        )
+    "ютуб" to "com.google.android.youtube",
+    "youtube" to "com.google.android.youtube",
+    "телеграм" to "org.telegram.messenger",
+    "telegram" to "org.telegram.messenger",
+    "whatsapp" to "com.whatsapp",
+    "вк" to "com.vkontakte.android",
+    "камера" to "com.android.camera",
+    "браузер" to "com.android.chrome",
+    "хром" to "com.android.chrome",
+    "калькулятор" to "com.google.android.calculator",
+    "настройки" to "com.android.settings"
+)
         val pkg = map[name.lowercase()]
         if (pkg != null) {
             val i = packageManager.getLaunchIntentForPackage(pkg)
