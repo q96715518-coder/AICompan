@@ -63,29 +63,27 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.voiceBtn).setOnClickListener { startVoice() }
         findViewById<Button>(R.id.stopBtn).setOnClickListener { stopAll() }
 
+        // НАСТРОЙКА ГОЛОСА (Пытаемся сделать как у Джарвиса)
         tts = TextToSpeech(this) { st ->
-    if (st == TextToSpeech.SUCCESS) {
-        // Пытаемся включить британский английский для эффекта Джарвиса
-        val result = tts.setLanguage(Locale.UK) 
-        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-            tts.language = Locale("ru", "RU") // Если нет, оставляем русский
-        }
-        
-        // Ищем мужской голос в системе
-        val voices = tts.voices
-        if (voices != null) {
-            for (voice in voices) {
-                if (voice.name.contains("male", ignoreCase = true) || voice.name.contains("en-gb", ignoreCase = true)) {
-                    tts.voice = voice
-                    break
+            if (st == TextToSpeech.SUCCESS) {
+                val result = tts.setLanguage(Locale.UK) 
+                if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    tts.language = Locale("ru", "RU")
                 }
+                
+                val voices = tts.voices
+                if (voices != null) {
+                    for (voice in voices) {
+                        if (voice.name.contains("male", ignoreCase = true) || voice.name.contains("en-gb", ignoreCase = true)) {
+                            tts.voice = voice
+                            break
+                        }
+                    }
+                }
+                tts.setPitch(0.8f) 
+                tts.setSpeechRate(1.0f)
             }
         }
-        // Делаем голос чуть ниже (эффект спокойного ИИ)
-        tts.setPitch(0.8f) 
-        tts.setSpeechRate(1.0f)
-    }
-}
 
         val quick = listOf(
             "🌐 Браузер" to "открой браузер",
@@ -103,7 +101,6 @@ class MainActivity : AppCompatActivity() {
             b.text = label
             b.textSize = 11f
             b.setOnClickListener {
-                // УМНАЯ ПРОВЕРКА: Если это прямая команда открытия, выполняем сразу!
                 val lowerCmd = cmd.lowercase()
                 when {
                     lowerCmd.contains("ютуб") || lowerCmd.contains("youtube") -> { openApp("youtube"); return@setOnClickListener }
@@ -117,6 +114,23 @@ class MainActivity : AppCompatActivity() {
         }
 
         statusView.text = "Напиши «привет» или нажми 🎤"
+
+        // ЗАПУСК ФОНОВОГО РЕЖИМА ДЖАРВИСА
+        val serviceIntent = Intent(this, JarvisService::class.java)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
+        }
+
+        // ПРОВЕРКА: ЕСЛИ НАС ВЫЗВАЛИ СЛОВОМ "ДЖАРВИС"
+        if (intent?.getStringExtra("VOICE_COMMAND") != null) {
+            val commandText = intent.getStringExtra("VOICE_COMMAND")
+            if (commandText != null) {
+                input.setText(commandText)
+                send()
+            }
+        }
     }
 
     private fun setPet(mood: String) {
@@ -205,14 +219,11 @@ class MainActivity : AppCompatActivity() {
             }
             cmd.startsWith("open_app:") -> openApp(cmd.removePrefix("open_app:").trim())
             cmd.startsWith("call:") -> {
-                startActivity(Intent(Intent.ACTION_DIAL,
-                    Uri.parse("tel:" + cmd.removePrefix("call:"))))
+                startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + cmd.removePrefix("call:"))))
                 reply("Набираю номер.")
             }
-            cmd == "time" -> reply("Сейчас " +
-                java.text.SimpleDateFormat("HH:mm", Locale.getDefault()).format(java.util.Date()))
-            cmd == "date" -> reply("Сегодня " +
-                java.text.SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(java.util.Date()))
+            cmd == "time" -> reply("Сейчас " + java.text.SimpleDateFormat("HH:mm", Locale.getDefault()).format(java.util.Date()))
+            cmd == "date" -> reply("Сегодня " + java.text.SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(java.util.Date()))
             else -> reply("Команда: $cmd")
         }
     }
