@@ -3,9 +3,14 @@ package com.example.aicompanion
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
+import android.view.Gravity
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -20,11 +25,45 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // ВАЖНО: Если у тебя есть файл activity_main.xml, раскомментируй строку ниже
-        // setContentView(R.layout.activity_main)
+        // --- СОЗДАЕМ ИНТЕРФЕЙС ПРОГРАММНО ---
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#1A1A1A")) // Темный фон
+        }
+
+        val title = TextView(this).apply {
+            text = "J.A.R.V.I.S."
+            textSize = 32f
+            setTextColor(Color.CYAN)
+            gravity = Gravity.CENTER
+        }
+
+        val statusText = TextView(this).apply {
+            text = "Система готова к запуску"
+            textSize = 18f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setPadding(0, 30, 0, 30)
+        }
+
+        val startButton = Button(this).apply {
+            text = "Активировать"
+            setOnClickListener {
+                statusText.text = "Система активирована. Слушаю..."
+                speak("Система активирована")
+                checkPermissionsAndStartService()
+            }
+        }
+
+        layout.addView(title)
+        layout.addView(statusText)
+        layout.addView(startButton)
+
+        setContentView(layout)
+        // -----------------------------------
 
         initTts()
-        checkPermissionsAndStartService()
     }
 
     private fun initTts() {
@@ -40,8 +79,6 @@ class MainActivity : AppCompatActivity() {
     fun speak(text: String) {
         if (tts != null) {
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "JarvisUtteranceId")
-        } else {
-            Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
         }
     }
 
