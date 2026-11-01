@@ -11,17 +11,8 @@ android {
         applicationId "com.example.aicompanion"
         minSdk 24
         targetSdk 34
-        
-        // ТВОЯ НОВАЯ ВЕРСИЯ
-        versionCode 12
-versionName "alfa 1"
-
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        
-        // Поддержка 64-битных систем
-        ndk {
-            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
-        }
+        versionCode 18
+        versionName "0.15.0"
     }
 
     buildTypes {
@@ -30,14 +21,10 @@ versionName "alfa 1"
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
-
-    // Настройки Java
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
-
-    // Настройки Kotlin
     kotlinOptions {
         jvmTarget = '17'
     }
