@@ -18,7 +18,6 @@ import android.text.InputType
 import android.util.Base64
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -51,13 +50,13 @@ class MainActivity : AppCompatActivity() {
     private val PERMISSION_REQUEST_CODE = 123
     private val IMAGE_PICK_CODE = 456
 
-    // Цветовая палитра (Современная темная тема)
-    private val colorBg = Color.parseColor("#0F1115") // Глубокий темный фон
-    private val colorHeader = Color.parseColor("#1A1D24") // Шапка
-    private val colorUserBubble = Color.parseColor("#2563EB") // Синий для пользователя
-    private val colorAiBubble = Color.parseColor("#2A2D35") // Серый для Джарвиса
-    private val colorInputBg = Color.parseColor("#1A1D24") // Фон поля ввода
-    private val colorAccent = Color.parseColor("#38BDF8") // Голубой акцент (Cyan)
+    // Цвета
+    private val colorBg = Color.parseColor("#0F1115")
+    private val colorHeader = Color.parseColor("#1A1D24")
+    private val colorUserBubble = Color.parseColor("#2563EB")
+    private val colorAiBubble = Color.parseColor("#2A2D35")
+    private val colorInputBg = Color.parseColor("#1A1D24")
+    private val colorAccent = Color.parseColor("#38BDF8")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -80,7 +79,6 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(colorHeader)
             setPadding(40, 40, 40, 40)
             gravity = Gravity.CENTER_VERTICAL
-            elevation = 10f // Тень
         }
         
         val titleLayout = LinearLayout(this).apply {
@@ -133,7 +131,6 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.BOTTOM
         }
 
-        // Красивое поле ввода с закруглениями
         val inputBackground = GradientDrawable().apply {
             setColor(Color.parseColor("#2A2D35"))
             cornerRadius = 60f
@@ -176,7 +173,6 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { checkPermissionsAndStartListening() }
         }
 
-        // Кнопка отправки (синий кружок)
         val sendBtnBackground = GradientDrawable().apply {
             setColor(colorUserBubble)
             shape = GradientDrawable.OVAL
@@ -187,7 +183,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
             background = sendBtnBackground
-            val size = 120 // Размер кнопки в пикселях
+            val size = 120
             layoutParams = LinearLayout.LayoutParams(size, size)
             setOnClickListener {
                 val text = inputEditText.text.toString().trim()
@@ -215,7 +211,6 @@ class MainActivity : AppCompatActivity() {
         addMessageToChat("Джарвис", "Все системы в норме. Чем могу помочь, сэр?", false)
     }
 
-    // --- МЕТОДЫ ИНТЕРФЕЙСА ---
     private fun addMessageToChat(sender: String, message: String, isUser: Boolean) {
         val messageLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -225,7 +220,7 @@ class MainActivity : AppCompatActivity() {
                 LinearLayout.LayoutParams.MATCH_PARENT, 
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                setMargins(if (isUser) 60 else 0, 0, if (isUser) 0 else 60, 0) // Отступы по бокам
+                setMargins(if (isUser) 60 else 0, 0, if (isUser) 0 else 60, 0)
             }
         }
 
@@ -235,7 +230,6 @@ class MainActivity : AppCompatActivity() {
             background = GradientDrawable().apply {
                 setColor(if (isUser) colorUserBubble else colorAiBubble)
                 cornerRadius = 50f
-                // Делаем "хвостик" пузыря (закругляем один угол)
                 if (isUser) {
                     cornerRadii = floatArrayOf(50f, 50f, 50f, 50f, 50f, 50f, 10f, 10f)
                 } else {
@@ -258,10 +252,9 @@ class MainActivity : AppCompatActivity() {
         chatScrollView.post { chatScrollView.fullScroll(View.FOCUS_DOWN) }
     }
 
-    // --- ОСТАЛЬНАЯ ЛОГИКА (БЕЗ ИЗМЕНЕНИЙ, КРОМЕ UI) ---
     private fun showSettingsDialog() {
         val options = arrayOf("Вставить API-ключ Groq", "Очистить долговременную память")
-        val builder = android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        val builder = android.app.AlertDialog.Builder(this)
         builder.setTitle("Настройки")
         builder.setItems(options) { _, which ->
             when (which) {
@@ -273,7 +266,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showTokenDialog() {
-        val builder = android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        val builder = android.app.AlertDialog.Builder(this)
         builder.setTitle("Groq API (Llama-3.2 Vision)")
         builder.setMessage("Вставьте API-ключ Groq (gsk_...)")
 
@@ -508,4 +501,15 @@ class MainActivity : AppCompatActivity() {
     private fun tryPuterAI(question: String, memoryPrompt: String) {
         val messagesArray = JSONArray()
         messagesArray.put(JSONObject().apply { put("role", "system"); put("content", "Ты - Джарвис. Отвечай кратко.$memoryPrompt") })
-        val startIdx = maxOf(0, ch
+        val startIdx = maxOf(0, chatHistory.length() - 4)
+        for (i in startIdx until chatHistory.length()) { messagesArray.put(chatHistory.getJSONObject(i)) }
+
+        val jsonBody = JSONObject().apply { put("messages", messagesArray) }
+        val request = Request.Builder()
+            .url("https://api.puter.com/drivers/call")
+            .post(jsonBody.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) { runOnUiThread { respondToAI("Ошибка сети.") } }
+            override fun onRespons
