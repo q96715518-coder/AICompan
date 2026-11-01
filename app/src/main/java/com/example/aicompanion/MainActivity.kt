@@ -52,7 +52,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val versionText = TextView(this).apply {
-            text = "v0.6.0"
+            text = "v0.7.0"
             textSize = 14f
             setTextColor(Color.GRAY)
             gravity = Gravity.CENTER
@@ -87,11 +87,14 @@ class MainActivity : AppCompatActivity() {
         initSpeechRecognizer()
     }
 
-    // --- ОЗВУЧКА ---
+    // --- ОЗВУЧКА (С НАСТРОЙКОЙ ГОЛОСА) ---
     private fun initTts() {
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts?.language = Locale("ru", "RU")
+                // Делаем голос ниже и чуть медленнее (эффект "Jarvis")
+                tts?.setPitch(0.85f) 
+                tts?.setSpeechRate(0.95f)
             }
         }
     }
@@ -157,13 +160,19 @@ class MainActivity : AppCompatActivity() {
             }
             command.contains("телеграм") || command.contains("telegram") -> {
                 speak("Открываю Телеграм")
-                try {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("tg://resolve"))
-                    startActivity(intent)
-                } catch (e: ActivityNotFoundException) {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://web.telegram.org"))
-                    startActivity(intent)
-                }
+                openApp("tg://resolve", "https://web.telegram.org")
+            }
+            command.contains("тик ток") || command.contains("тикток") || command.contains("tiktok") -> {
+                speak("Открываю Тик Ток")
+                openApp("com.zhiliaoapp.musically")
+            }
+            command.contains("роблокс") || command.contains("roblox") -> {
+                speak("Открываю Роблокс")
+                openApp("com.roblox.client")
+            }
+            command.contains("бравл") || command.contains("brawl") -> {
+                speak("Запускаю Бравл Старс")
+                openApp("com.supercell.brawlstars")
             }
 
             // 3. Таймер
@@ -182,6 +191,22 @@ class MainActivity : AppCompatActivity() {
             else -> {
                 speak("Я не знаю такой команды")
                 statusText.text = "Команда не распознана"
+            }
+        }
+    }
+
+    // --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ОТКРЫТИЯ ПРИЛОЖЕНИЙ ---
+    private fun openApp(packageName: String, fallbackUrl: String? = null) {
+        val intent = packageManager.getLaunchIntentForPackage(packageName)
+        if (intent != null) {
+            startActivity(intent)
+        } else {
+            if (fallbackUrl != null) {
+                // Если приложения нет, но есть ссылка (как у Телеграма)
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fallbackUrl)))
+            } else {
+                speak("Извините, это приложение не установлено на вашем устройстве.")
+                statusText.text = "Приложение не найдено"
             }
         }
     }
