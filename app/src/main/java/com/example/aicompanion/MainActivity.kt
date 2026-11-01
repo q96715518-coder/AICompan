@@ -52,7 +52,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val versionText = TextView(this).apply {
-            text = "v0.7.0"
+            text = "v0.7.1"
             textSize = 14f
             setTextColor(Color.GRAY)
             gravity = Gravity.CENTER
@@ -92,7 +92,6 @@ class MainActivity : AppCompatActivity() {
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts?.language = Locale("ru", "RU")
-                // Делаем голос ниже и чуть медленнее (эффект "Jarvis")
                 tts?.setPitch(0.85f) 
                 tts?.setSpeechRate(0.95f)
             }
@@ -155,12 +154,11 @@ class MainActivity : AppCompatActivity() {
             // 2. Открытие приложений и сайтов
             command.contains("браузер") || command.contains("интернет") -> {
                 speak("Открываю браузер")
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com"))
-                startActivity(intent)
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com")))
             }
             command.contains("телеграм") || command.contains("telegram") -> {
                 speak("Открываю Телеграм")
-                openApp("tg://resolve", "https://web.telegram.org")
+                openApp("org.telegram.messenger", "https://web.telegram.org")
             }
             command.contains("тик ток") || command.contains("тикток") || command.contains("tiktok") -> {
                 speak("Открываю Тик Ток")
@@ -173,6 +171,15 @@ class MainActivity : AppCompatActivity() {
             command.contains("бравл") || command.contains("brawl") -> {
                 speak("Запускаю Бравл Старс")
                 openApp("com.supercell.brawlstars")
+            }
+            // НОВЫЕ ПРИЛОЖЕНИЯ
+            command.contains("яндекс музыка") || command.contains("музыка") -> {
+                speak("Включаю Яндекс Музыку")
+                openApp("ru.yandex.music")
+            }
+            command.contains("ютуб") || command.contains("youtube") -> {
+                speak("Открываю YouTube")
+                openApp("com.google.android.youtube", "https://youtube.com")
             }
 
             // 3. Таймер
@@ -202,7 +209,6 @@ class MainActivity : AppCompatActivity() {
             startActivity(intent)
         } else {
             if (fallbackUrl != null) {
-                // Если приложения нет, но есть ссылка (как у Телеграма)
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fallbackUrl)))
             } else {
                 speak("Извините, это приложение не установлено на вашем устройстве.")
