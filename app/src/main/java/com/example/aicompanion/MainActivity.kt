@@ -34,9 +34,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var inputEditText: EditText
     private var timer: CountDownTimer? = null
     
+    // ПАМЯТЬ ДЖАРВИСА (История диалога)
+    private val chatHistory = mutableListOf<String>()
+
     private val client = OkHttpClient.Builder()
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
     private val PERMISSION_REQUEST_CODE = 123
@@ -60,24 +63,23 @@ class MainActivity : AppCompatActivity() {
         }
 
         val versionText = TextView(this).apply {
-            text = "v0.9.5 (Голос + Текст)"
+            text = "v0.9.8 (Память и Интеллект)"
             textSize = 14f
             setTextColor(Color.GRAY)
             gravity = Gravity.CENTER
-            setPadding(0, 5, 0, 30)
+            setPadding(0, 5, 0, 20)
         }
 
         statusText = TextView(this).apply {
-            text = "Система в режиме ожидания"
+            text = "Система готова к диалогу..."
             textSize = 16f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
             setPadding(0, 20, 0, 20)
         }
 
-        // --- ПОЛЕ ВВОДА ТЕКСТА ---
         inputEditText = EditText(this).apply {
-            hint = "Напишите команду или вопрос..."
+            hint = "Напишите или спросите..."
             setTextColor(Color.WHITE)
             setHintTextColor(Color.GRAY)
             setBackgroundColor(Color.parseColor("#333333"))
@@ -85,53 +87,36 @@ class MainActivity : AppCompatActivity() {
             setPadding(20, 20, 20, 20)
         }
 
-        // --- КНОПКА ОТПРАВКИ ТЕКСТА ---
         val sendButton = Button(this).apply {
             text = "Отправить текст"
             setBackgroundColor(Color.parseColor("#4CAF50"))
             setOnClickListener {
                 val textCommand = inputEditText.text.toString().trim()
                 if (textCommand.isNotEmpty()) {
-                    statusText.text = "Вы (текст): $textCommand"
+                    statusText.text = "Вы: $textCommand"
                     handleCommand(textCommand)
                     inputEditText.text.clear()
                 }
             }
         }
 
-        // --- КНОПКА ГОЛОСОВОГО ВВОДА ---
         val voiceButton = Button(this).apply {
             text = "Сказать голосом 🎤"
             setBackgroundColor(Color.CYAN)
             setTextColor(Color.BLACK)
             setOnClickListener {
                 statusText.text = "Слушаю..."
-                speak("Слушаю вас.")
                 checkPermissionsAndStartListening()
             }
         }
 
-        // --- КНОПКА НАСТРОЕК ---
-        val settingsButton = Button(this).apply {
-            text = "Настройки"
+        val clearMemoryButton = Button(this).apply {
+            text = "Очистить память ИИ"
+            setBackgroundColor(Color.RED)
             setOnClickListener {
-                showSettingsMenu()
-            }
-        }
-
-        // --- КНОПКА РАЗРЕШЕНИЙ (Для Android 11+) ---
-        val overlayButton = Button(this).apply {
-            text = "Разрешить запуск приложений"
-            setBackgroundColor(Color.parseColor("#FF9800"))
-            setOnClickListener {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    if (!Settings.canDrawOverlays(this@MainActivity)) {
-                        val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
-                        startActivity(intent)
-                    } else {
-                        Toast.makeText(this@MainActivity, "Разрешение уже есть!", Toast.LENGTH_SHORT).show()
-                    }
-                }
+                chatHistory.clear()
+                statusText.text = "Память очищена."
+                speak("История нашего общения удалена.")
             }
         }
 
@@ -141,69 +126,12 @@ class MainActivity : AppCompatActivity() {
         layout.addView(inputEditText)
         layout.addView(sendButton)
         layout.addView(voiceButton)
-        layout.addView(settingsButton)
-        layout.addView(overlayButton)
+        layout.addView(clearMemoryButton)
 
         setContentView(layout)
 
         initTts()
         initSpeechRecognizer()
-    }
-
-    // --- МЕНЮ НАСТРОЕК ---
-    private fun showSettingsMenu() {
-        val builder = android.app.AlertDialog.Builder(this)
-        builder.setTitle("Настройки Джарвиса")
-
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(50, 20, 50, 20)
-        }
-
-        val speedSeekBar = SeekBar(this).apply {
-            max = 150
-            progress = 95
-        }
-        val speedText = TextView(this).apply { text = "Скорость речи: 0.95" }
-
-        speedSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                val speed = progress / 100f
-                speedText.text = "Скорость речи: $speed"
-                tts?.setSpeechRate(speed)
-            }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-        })
-
-        val pitchSeekBar = SeekBar(this).apply {
-            max = 200
-            progress = 85
-        }
-        val pitchText = TextView(this).apply { text = "Высота голоса: 0.85" }
-
-        pitchSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                val pitch = progress / 100f
-                pitchText.text = "Высота голоса: $pitch"
-                tts?.setPitch(pitch)
-            }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-        })
-
-        layout.addView(speedText)
-        layout.addView(speedSeekBar)
-        layout.addView(pitchText)
-        layout.addView(pitchSeekBar)
-
-        builder.setView(layout)
-        builder.setPositiveButton("Сохранить") { dialog, _ ->
-            speak("Настройки применены.")
-            dialog.dismiss()
-        }
-        builder.setNegativeButton("Отмена") { dialog, _ -> dialog.dismiss() }
-        builder.show()
     }
 
     // --- ОЗВУЧКА ---
@@ -221,23 +149,23 @@ class MainActivity : AppCompatActivity() {
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "JarvisUtteranceId")
     }
 
-    // --- РАСПОЗНАВАНИЕ ГОЛОСА ---
+    // --- РАСПОЗНАВАНИЕ ---
     private fun initSpeechRecognizer() {
         if (SpeechRecognizer.isRecognitionAvailable(this)) {
             speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
             speechRecognizer?.setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: Bundle?) { statusText.text = "Я вас слушаю..." }
+                override fun onReadyForSpeech(params: Bundle?) { statusText.text = "Слушаю..." }
                 override fun onBeginningOfSpeech() {}
                 override fun onRmsChanged(rmsdB: Float) {}
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() { statusText.text = "Обрабатываю..." }
-                override fun onError(error: Int) { statusText.text = "Не расслышал. Попробуйте еще раз." }
+                override fun onError(error: Int) { statusText.text = "Не расслышал." }
 
                 override fun onResults(results: Bundle?) {
                     val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     if (!matches.isNullOrEmpty()) {
                         val command = matches[0].lowercase(Locale.getDefault())
-                        statusText.text = "Вы (голос): $command"
+                        statusText.text = "Вы: $command"
                         handleCommand(command)
                     }
                 }
@@ -255,7 +183,7 @@ class MainActivity : AppCompatActivity() {
         speechRecognizer?.startListening(intent)
     }
 
-    // --- ОБРАБОТКА КОМАНД (ОБЩАЯ ДЛЯ ТЕКСТА И ГОЛОСА) ---
+    // --- ОБРАБОТКА КОМАНД ---
     private fun handleCommand(command: String) {
         val lowerCommand = command.lowercase(Locale.getDefault())
         when {
@@ -264,86 +192,46 @@ class MainActivity : AppCompatActivity() {
                 speak("Сейчас $time")
                 statusText.text = "Время: $time"
             }
-            lowerCommand.contains("дата") || lowerCommand.contains("число") -> {
+            lowerCommand.contains("дата") -> {
                 val date = SimpleDateFormat("d MMMM yyyy", Locale("ru")).format(Date())
                 speak("Сегодня $date")
                 statusText.text = "Дата: $date"
-            }
-            lowerCommand.contains("браузер") -> {
-                speak("Открываю браузер")
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com")))
-            }
-            lowerCommand.contains("телеграм") || lowerCommand.contains("telegram") -> {
-                speak("Открываю Телеграм")
-                openApp("org.telegram.messenger", "https://web.telegram.org")
-            }
-            lowerCommand.contains("тик ток") || lowerCommand.contains("тикток") -> {
-                speak("Открываю Тик Ток")
-                openApp("com.zhiliaoapp.musically")
-            }
-            lowerCommand.contains("роблокс") -> {
-                speak("Открываю Роблокс")
-                openApp("com.roblox.client")
-            }
-            lowerCommand.contains("бравл") -> {
-                speak("Запускаю Бравл Старс")
-                openApp("com.supercell.brawlstars")
-            }
-            lowerCommand.contains("яндекс музыка") || lowerCommand.contains("музыка") -> {
-                speak("Включаю Яндекс Музыку")
-                openApp("ru.yandex.music")
             }
             lowerCommand.contains("ютуб") -> {
                 speak("Открываю YouTube")
                 openApp("com.google.android.youtube", "https://youtube.com")
             }
+            // Таймер
             lowerCommand.contains("таймер") -> {
                 speak("На сколько минут поставить таймер?")
-                statusText.text = "Скажите или напишите количество минут..."
                 val minutes = lowerCommand.filter { it.isDigit() }.toIntOrNull() ?: 1
                 startTimer(minutes)
             }
-            lowerCommand.contains("стоп") || lowerCommand.contains("отмена") -> {
-                timer?.cancel()
-                speak("Таймер отменен")
-                statusText.text = "Таймер отменен"
-            }
-            // Если команда не распознана, идем к ИИ
+            // В остальных случаях - Умный диалог с ИИ
             else -> {
-                askAI(command)
+                askSmartAI(command)
             }
         }
     }
 
-    // --- ЗАПУСК ПРИЛОЖЕНИЙ ---
     private fun openApp(packageName: String, fallbackUrl: String? = null) {
         try {
             val intent = packageManager.getLaunchIntentForPackage(packageName)
             if (intent != null) {
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 startActivity(intent)
+            } else if (fallbackUrl != null) {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fallbackUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             } else {
-                if (fallbackUrl != null) {
-                    val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse(fallbackUrl))
-                    webIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    startActivity(webIntent)
-                } else {
-                    speak("Извините, это приложение не установлено.")
-                    statusText.text = "Приложение не найдено"
-                }
+                speak("Приложение не установлено.")
             }
-        } catch (e: Exception) {
-            speak("Не удалось открыть приложение.")
-        }
+        } catch (e: Exception) {}
     }
 
-    // --- ТАЙМЕР ---
     private fun startTimer(minutes: Int) {
         timer?.cancel()
         val millisInFuture = minutes * 60 * 1000L
         speak("Таймер на $minutes минут запущен")
-        statusText.text = "Таймер: $minutes мин."
-
         timer = object : CountDownTimer(millisInFuture, 1000) {
             override fun onTick(millisUntilFinished: Long) {
                 val seconds = millisUntilFinished / 1000
@@ -356,12 +244,25 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    // --- БЕСПЛАТНЫЙ ИИ ---
-    private fun askAI(question: String) {
+    // --- МОЗГ И ПАМЯТЬ (SMART AI) ---
+    private fun askSmartAI(question: String) {
         statusText.text = "Думаю..."
         
-        val encodedQuestion = Uri.encode(question)
-        val url = "https://text.pollinations.ai/$encodedQuestion?system=Ты%20Джарвис.%20Отвечай%20кратко%20и%20по%20делу."
+        // 1. Формируем системный характер (Промпт)
+        val systemPrompt = "Ты - Джарвис, продвинутый ИИ-ассистент. Ты вежлив, учтив, называешь пользователя 'сэр' или 'шеф'. Ты обладаешь легким британским юмором. Отвечай кратко, информативно и по делу, максимум 3-4 предложения."
+        
+        // 2. Формируем историю диалога (Берем последние 4 сообщения, чтобы не перегрузить сервер)
+        val contextHistory = if (chatHistory.size > 4) {
+            chatHistory.takeLast(4).joinToString("\n")
+        } else {
+            chatHistory.joinToString("\n")
+        }
+
+        // 3. Собираем всё вместе
+        val fullPrompt = "$systemPrompt\n\nИстория диалога:\n$contextHistory\nПользователь: $question\nДжарвис:"
+        
+        val encodedPrompt = Uri.encode(fullPrompt)
+        val url = "https://text.pollinations.ai/$encodedPrompt"
         
         val request = Request.Builder()
             .url(url)
@@ -371,8 +272,8 @@ class MainActivity : AppCompatActivity() {
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 runOnUiThread {
-                    speak("Ошибка сети. Проверьте интернет.")
-                    statusText.text = "Нет связи с ИИ"
+                    speak("Связь с сервером потеряна, сэр.")
+                    statusText.text = "Ошибка сети"
                 }
             }
 
@@ -380,14 +281,18 @@ class MainActivity : AppCompatActivity() {
                 response.use {
                     if (response.isSuccessful) {
                         val answer = response.body?.string()?.trim() ?: "Я не знаю, что ответить."
+                        
+                        // 4. СОХРАНЯЕМ В ПАМЯТЬ
+                        chatHistory.add("Пользователь: $question")
+                        chatHistory.add("Джарвис: $answer")
+
                         runOnUiThread {
                             statusText.text = "Джарвис: $answer"
                             speak(answer)
                         }
                     } else {
                         runOnUiThread {
-                            speak("Сервер ИИ перегружен. Попробуйте позже.")
-                            statusText.text = "Ошибка сервера ИИ (Код ${response.code})"
+                            speak("Нейросеть перегружена. Попробуйте еще раз.")
                         }
                     }
                 }
