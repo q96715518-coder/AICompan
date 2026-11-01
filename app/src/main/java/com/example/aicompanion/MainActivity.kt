@@ -8,14 +8,14 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.CountDownTimer
+import android.provider.Settings
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.view.Gravity
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.TextView
+import android.view.View
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -37,8 +37,8 @@ class MainActivity : AppCompatActivity() {
     private var timer: CountDownTimer? = null
     
     private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
         .build()
 
     private val PERMISSION_REQUEST_CODE = 123
@@ -46,11 +46,12 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // --- ИНТЕРФЕЙС ---
+        // --- ГЛАВНЫЙ ЭКРАН ---
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setBackgroundColor(Color.parseColor("#1A1A1A"))
+            setPadding(40, 40, 40, 40)
         }
 
         val title = TextView(this).apply {
@@ -61,11 +62,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         val versionText = TextView(this).apply {
-            text = "v0.8.1 Free AI"
+            text = "v0.9.0 (Панель управления)"
             textSize = 14f
             setTextColor(Color.GRAY)
             gravity = Gravity.CENTER
-            setPadding(0, 5, 0, 40)
+            setPadding(0, 5, 0, 30)
         }
 
         statusText = TextView(this).apply {
@@ -77,7 +78,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         val startButton = Button(this).apply {
-            text = "Активировать"
+            text = "Начать диалог"
+            setBackgroundColor(Color.CYAN)
+            setTextColor(Color.BLACK)
             setOnClickListener {
                 statusText.text = "Слушаю..."
                 speak("Слушаю вас.")
@@ -85,15 +88,96 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        val settingsButton = Button(this).apply {
+            text = "Настройки"
+            setOnClickListener {
+                showSettingsMenu()
+            }
+        }
+
+        // ВАЖНАЯ КНОПКА ДЛЯ АНДРОИД 11+ (Чтобы он мог открывать другие приложения)
+        val overlayButton = Button(this).apply {
+            text = "Разрешить запуск приложений"
+            setBackgroundColor(Color.parseColor("#FF9800"))
+            setOnClickListener {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    if (!Settings.canDrawOverlays(this@MainActivity)) {
+                        val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+                        startActivity(intent)
+                    } else {
+                        Toast.makeText(this@MainActivity, "Разрешение уже есть!", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+
         layout.addView(title)
         layout.addView(versionText)
         layout.addView(statusText)
         layout.addView(startButton)
+        layout.addView(settingsButton)
+        layout.addView(overlayButton)
 
         setContentView(layout)
 
         initTts()
         initSpeechRecognizer()
+    }
+
+    // --- МЕНЮ НАСТРОЕК ---
+    private fun showSettingsMenu() {
+        val builder = android.app.AlertDialog.Builder(this)
+        builder.setTitle("Настройки Джарвиса")
+
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(50, 20, 50, 20)
+        }
+
+        val speedSeekBar = SeekBar(this).apply {
+            max = 150
+            progress = 95 // По умолчанию 0.95
+        }
+        val speedText = TextView(this).apply { text = "Скорость речи: 0.95" }
+
+        speedSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                val speed = progress / 100f
+                speedText.text = "Скорость речи: $speed"
+                tts?.setSpeechRate(speed)
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+
+        val pitchSeekBar = SeekBar(this).apply {
+            max = 200
+            progress = 85 // По умолчанию 0.85
+        }
+        val pitchText = TextView(this).apply { text = "Высота голоса: 0.85" }
+
+        pitchSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                val pitch = progress / 100f
+                pitchText.text = "Высота голоса: $pitch"
+                tts?.setPitch(pitch)
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+
+        layout.addView(speedText)
+        layout.addView(speedSeekBar)
+        layout.addView(pitchText)
+        layout.addView(pitchSeekBar)
+
+        builder.setView(layout)
+        builder.setPositiveButton("Сохранить") { dialog, _ ->
+            speak("Настройки применены.")
+            dialog.dismiss()
+        }
+        builder.setNegativeButton("Отмена") { dialog, _ -> dialog.dismiss() }
+        builder.show()
     }
 
     // --- ОЗВУЧКА ---
@@ -197,27 +281,36 @@ class MainActivity : AppCompatActivity() {
                 speak("Таймер отменен")
                 statusText.text = "Таймер отменен"
             }
-            // Если ничего не подошло - идем к бесплатному ИИ
+            // Вопрос к ИИ
             else -> {
-                askFreeAI(command)
+                askAI(command)
             }
         }
     }
 
+    // --- ИСПРАВЛЕННЫЙ ЗАПУСК ПРИЛОЖЕНИЙ ---
     private fun openApp(packageName: String, fallbackUrl: String? = null) {
-        val intent = packageManager.getLaunchIntentForPackage(packageName)
-        if (intent != null) {
-            startActivity(intent)
-        } else {
-            if (fallbackUrl != null) {
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fallbackUrl)))
+        try {
+            val intent = packageManager.getLaunchIntentForPackage(packageName)
+            if (intent != null) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
             } else {
-                speak("Извините, это приложение не установлено.")
-                statusText.text = "Приложение не найдено"
+                if (fallbackUrl != null) {
+                    val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse(fallbackUrl))
+                    webIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(webIntent)
+                } else {
+                    speak("Извините, это приложение не установлено.")
+                    statusText.text = "Приложение не найдено"
+                }
             }
+        } catch (e: Exception) {
+            speak("Не удалось открыть приложение.")
         }
     }
 
+    // --- ТАЙМЕР ---
     private fun startTimer(minutes: Int) {
         timer?.cancel()
         val millisInFuture = minutes * 60 * 1000L
@@ -236,72 +329,23 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    // --- БЕСПЛАТНЫЙ ИИ (PUTER.JS) ---
-    private fun askFreeAI(question: String) {
+    // --- НАДЕЖНЫЙ БЕСПЛАТНЫЙ ИИ (POLLINATIONS) ---
+    private fun askAI(question: String) {
         statusText.text = "Думаю..."
         
-        // Бесплатный API от Puter. Он не требует ключей и токенов.
-        val json = """
-            {
-                "messages": [
-                    {"role": "system", "content": "Ты - Джарвис, умный голосовой ассистент. Отвечай кратко, максимум 2-3 предложения."},
-                    {"role": "user", "content": "$question"}
-                ]
-            }
-        """.trimIndent()
-
-        val requestBody = json.toRequestBody("application/json".toMediaType())
+        // Используем Pollinations - самый стабильный бесплатный шлюз
+        val encodedQuestion = Uri.encode(question)
+        val url = "https://text.pollinations.ai/$encodedQuestion?system=Ты%20Джарвис.%20Отвечай%20кратко%20и%20по%20делу."
+        
         val request = Request.Builder()
-            .url("https://api.puter.com/drivers/call") // Бесплатный шлюз
-            .post(requestBody)
+            .url(url)
+            .addHeader("User-Agent", "Mozilla/5.0 (Android)")
             .build()
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 runOnUiThread {
-                    speak("Ошибка сети. Попробуйте позже.")
-                    statusText.text = "Ошибка сети"
-                }
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                response.use {
-                    if (!response.isSuccessful) {
-                        runOnUiThread {
-                            // Если Puter не ответил, используем резервный бесплатный API
-                            fallbackAI(question)
-                        }
-                        return
-                    }
-                    val responseData = response.body?.string()
-                    try {
-                        val jsonObject = JSONObject(responseData!!)
-                        val answer = jsonObject.getJSONArray("choices")
-                            .getJSONObject(0)
-                            .getJSONObject("message")
-                            .getString("content")
-                            
-                        runOnUiThread {
-                            statusText.text = "Джарвис: $answer"
-                            speak(answer)
-                        }
-                    } catch (e: Exception) {
-                        runOnUiThread { fallbackAI(question) }
-                    }
-                }
-            }
-        })
-    }
-
-    // Резервный бесплатный API (если первый не сработал)
-    private fun fallbackAI(question: String) {
-        val url = "https://text.pollinations.ai/${Uri.encode(question)}?system=Ты%20Джарвис,%20отвечай%20кратко%20и%20по%20делу."
-        val request = Request.Builder().url(url).build()
-
-        client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                runOnUiThread {
-                    speak("Мозг недоступен. Проверьте интернет.")
+                    speak("Ошибка сети. Проверьте интернет.")
                     statusText.text = "Нет связи с ИИ"
                 }
             }
@@ -309,14 +353,15 @@ class MainActivity : AppCompatActivity() {
             override fun onResponse(call: Call, response: Response) {
                 response.use {
                     if (response.isSuccessful) {
-                        val answer = response.body?.string() ?: "Пустой ответ"
+                        val answer = response.body?.string()?.trim() ?: "Я не знаю, что ответить."
                         runOnUiThread {
-                            statusText.text = "Джарвис: $answer"
+                            statusText.text = answer
                             speak(answer)
                         }
                     } else {
                         runOnUiThread {
-                            speak("Я не могу ответить на этот вопрос.")
+                            speak("Сервер ИИ перегружен. Попробуйте позже.")
+                            statusText.text = "Ошибка сервера ИИ (Код ${response.code})"
                         }
                     }
                 }
