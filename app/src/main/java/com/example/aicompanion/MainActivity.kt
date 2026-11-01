@@ -1,20 +1,22 @@
 package com.example.aicompanion
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.Typeface
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.os.CountDownTimer
-import android.provider.Settings
+import android.provider.MediaStore
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.text.InputType
 import android.view.Gravity
+import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -22,150 +24,199 @@ import androidx.core.content.ContextCompat
 import okhttp3.*
 import java.io.IOException
 import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.util.*
 import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
 
     private var tts: TextToSpeech? = null
     private var speechRecognizer: SpeechRecognizer? = null
-    private lateinit var statusText: TextView
+    private lateinit var chatScrollView: ScrollView
+    private lateinit var chatContainer: LinearLayout
     private lateinit var inputEditText: EditText
     private var timer: CountDownTimer? = null
     
-    // ПАМЯТЬ ДЖАРВИСА (История диалога)
     private val chatHistory = mutableListOf<String>()
-
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .build()
-
+    private val client = OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS).build()
     private val PERMISSION_REQUEST_CODE = 123
+    private val IMAGE_PICK_CODE = 456
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // --- ГЛАВНЫЙ ЭКРАН ---
-        val layout = LinearLayout(this).apply {
+        // --- ОСНОВНОЙ МАКЕТ (Экран чата) ---
+        val mainLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setBackgroundColor(Color.parseColor("#1A1A1A"))
-            setPadding(40, 40, 40, 40)
+            setBackgroundColor(Color.parseColor("#121212")) // Темный фон как в Telegram
         }
 
+        // 1. Верхняя панель (Header)
+        val headerLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(Color.parseColor("#1E1E1E"))
+            setPadding(30, 30, 30, 30)
+            gravity = Gravity.CENTER_VERTICAL
+        }
         val title = TextView(this).apply {
-            text = "J.A.R.V.I.S."
-            textSize = 32f
+            text = "J.A.R.V.I.S. (v0.10.0)"
+            textSize = 20f
             setTextColor(Color.CYAN)
-            gravity = Gravity.CENTER
+            setTypeface(null, Typeface.BOLD)
+        }
+        headerLayout.addView(title)
+
+        // 2. Область чата (Куда падают сообщения)
+        chatScrollView = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+        }
+        chatContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(20, 20, 20, 20)
+        }
+        chatScrollView.addView(chatContainer)
+
+        // 3. Панель ввода (Снизу)
+        val inputLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(Color.parseColor("#1E1E1E"))
+            setPadding(15, 15, 15, 15)
+            gravity = Gravity.CENTER_VERTICAL
         }
 
-        val versionText = TextView(this).apply {
-            text = "v0.9.8 (Память и Интеллект)"
-            textSize = 14f
-            setTextColor(Color.GRAY)
-            gravity = Gravity.CENTER
-            setPadding(0, 5, 0, 20)
-        }
-
-        statusText = TextView(this).apply {
-            text = "Система готова к диалогу..."
-            textSize = 16f
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            setPadding(0, 20, 0, 20)
+        val attachBtn = Button(this).apply {
+            text = "📎"
+            setBackgroundColor(Color.TRANSPARENT)
+            setOnClickListener { openGallery() }
         }
 
         inputEditText = EditText(this).apply {
-            hint = "Напишите или спросите..."
-            setTextColor(Color.WHITE)
+            hint = "Сообщение..."
             setHintTextColor(Color.GRAY)
-            setBackgroundColor(Color.parseColor("#333333"))
-            inputType = InputType.TYPE_CLASS_TEXT
-            setPadding(20, 20, 20, 20)
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor("#2C2C2C"))
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            setPadding(20, 15, 20, 15)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(10, 0, 10, 0)
+            }
         }
 
-        val sendButton = Button(this).apply {
-            text = "Отправить текст"
-            setBackgroundColor(Color.parseColor("#4CAF50"))
+        val micBtn = Button(this).apply {
+            text = "🎤"
+            setBackgroundColor(Color.TRANSPARENT)
+            setOnClickListener { checkPermissionsAndStartListening() }
+        }
+
+        val sendBtn = Button(this).apply {
+            text = "➤"
+            setBackgroundColor(Color.parseColor("#007AFF"))
+            setTextColor(Color.WHITE)
             setOnClickListener {
-                val textCommand = inputEditText.text.toString().trim()
-                if (textCommand.isNotEmpty()) {
-                    statusText.text = "Вы: $textCommand"
-                    handleCommand(textCommand)
+                val text = inputEditText.text.toString().trim()
+                if (text.isNotEmpty()) {
+                    addMessageToChat("Вы", text, true)
+                    handleCommand(text)
                     inputEditText.text.clear()
                 }
             }
         }
 
-        val voiceButton = Button(this).apply {
-            text = "Сказать голосом 🎤"
-            setBackgroundColor(Color.CYAN)
-            setTextColor(Color.BLACK)
-            setOnClickListener {
-                statusText.text = "Слушаю..."
-                checkPermissionsAndStartListening()
-            }
-        }
+        inputLayout.addView(attachBtn)
+        inputLayout.addView(inputEditText)
+        inputLayout.addView(micBtn)
+        inputLayout.addView(sendBtn)
 
-        val clearMemoryButton = Button(this).apply {
-            text = "Очистить память ИИ"
-            setBackgroundColor(Color.RED)
-            setOnClickListener {
-                chatHistory.clear()
-                statusText.text = "Память очищена."
-                speak("История нашего общения удалена.")
-            }
-        }
+        mainLayout.addView(headerLayout)
+        mainLayout.addView(chatScrollView)
+        mainLayout.addView(inputLayout)
 
-        layout.addView(title)
-        layout.addView(versionText)
-        layout.addView(statusText)
-        layout.addView(inputEditText)
-        layout.addView(sendButton)
-        layout.addView(voiceButton)
-        layout.addView(clearMemoryButton)
-
-        setContentView(layout)
+        setContentView(mainLayout)
 
         initTts()
         initSpeechRecognizer()
+        addMessageToChat("Джарвис", "Система запущена. Чем могу помочь, сэр?", false)
     }
 
-    // --- ОЗВУЧКА ---
+    // --- ДОБАВЛЕНИЕ СООБЩЕНИЯ В ЧАТ ---
+    private fun addMessageToChat(sender: String, message: String, isUser: Boolean) {
+        val messageLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = if (isUser) Gravity.END else Gravity.START
+            setPadding(0, 10, 0, 10)
+        }
+
+        val bubbleLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(if (isUser) Color.parseColor("#007AFF") else Color.parseColor("#2C2C2C"))
+            setPadding(30, 20, 30, 20)
+            // Закругляем углы
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(if (isUser) Color.parseColor("#007AFF") else Color.parseColor("#2C2C2C"))
+                cornerRadius = 40f
+            }
+        }
+
+        val textView = TextView(this).apply {
+            text = message
+            setTextColor(Color.WHITE)
+            textSize = 16f
+        }
+
+        bubbleLayout.addView(textView)
+        messageLayout.addView(bubbleLayout)
+        chatContainer.addView(messageLayout)
+
+        // Автоскролл вниз
+        chatScrollView.post { chatScrollView.fullScroll(View.FOCUS_DOWN) }
+    }
+
+    // --- ОТКРЫТИЕ ГАЛЕРЕИ (ФОТО) ---
+    private fun openGallery() {
+        val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+        startActivityForResult(intent, IMAGE_PICK_CODE)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == IMAGE_PICK_CODE && resultCode == Activity.RESULT_OK) {
+            data?.data?.let { uri ->
+                addMessageToChat("Вы", "📷 [Отправлено фото]", true)
+                // Тут в будущем можно распознавать, что на фото, но пока ИИ просто скажет:
+                respondToAI("Пользователь отправил тебе картинку. Скажи что-то вроде 'Я вижу изображение, сэр, но пока не могу его распознать, так как мой модуль зрения в разработке'.")
+            }
+        }
+    }
+
+    // --- ОЗВУЧКА И РАСПОЗНАВАНИЕ (Стандартные) ---
     private fun initTts() {
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts?.language = Locale("ru", "RU")
-                tts?.setPitch(0.85f) 
-                tts?.setSpeechRate(0.95f)
+                tts?.setPitch(0.85f)
             }
         }
     }
 
     fun speak(text: String) {
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "JarvisUtteranceId")
+        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "JarvisId")
     }
 
-    // --- РАСПОЗНАВАНИЕ ---
     private fun initSpeechRecognizer() {
         if (SpeechRecognizer.isRecognitionAvailable(this)) {
             speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
             speechRecognizer?.setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: Bundle?) { statusText.text = "Слушаю..." }
+                override fun onReadyForSpeech(params: Bundle?) {}
                 override fun onBeginningOfSpeech() {}
                 override fun onRmsChanged(rmsdB: Float) {}
                 override fun onBufferReceived(buffer: ByteArray?) {}
-                override fun onEndOfSpeech() { statusText.text = "Обрабатываю..." }
-                override fun onError(error: Int) { statusText.text = "Не расслышал." }
+                override fun onEndOfSpeech() {}
+                override fun onError(error: Int) { addMessageToChat("Система", "Не расслышал вас.", false) }
 
                 override fun onResults(results: Bundle?) {
                     val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     if (!matches.isNullOrEmpty()) {
-                        val command = matches[0].lowercase(Locale.getDefault())
-                        statusText.text = "Вы: $command"
+                        val command = matches[0]
+                        addMessageToChat("Вы (Голос)", command, true)
                         handleCommand(command)
                     }
                 }
@@ -183,116 +234,64 @@ class MainActivity : AppCompatActivity() {
         speechRecognizer?.startListening(intent)
     }
 
-    // --- ОБРАБОТКА КОМАНД ---
+    // --- ОБРАБОТКА КОМАНД И ИИ ---
     private fun handleCommand(command: String) {
-        val lowerCommand = command.lowercase(Locale.getDefault())
+        val lower = command.lowercase(Locale.getDefault())
         when {
-            lowerCommand.contains("время") -> {
+            lower.contains("время") -> {
                 val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                speak("Сейчас $time")
-                statusText.text = "Время: $time"
+                respondToAI("Сейчас $time", true)
             }
-            lowerCommand.contains("дата") -> {
-                val date = SimpleDateFormat("d MMMM yyyy", Locale("ru")).format(Date())
-                speak("Сегодня $date")
-                statusText.text = "Дата: $date"
-            }
-            lowerCommand.contains("ютуб") -> {
-                speak("Открываю YouTube")
-                openApp("com.google.android.youtube", "https://youtube.com")
-            }
-            // Таймер
-            lowerCommand.contains("таймер") -> {
-                speak("На сколько минут поставить таймер?")
-                val minutes = lowerCommand.filter { it.isDigit() }.toIntOrNull() ?: 1
+            lower.contains("таймер") -> {
+                val minutes = lower.filter { it.isDigit() }.toIntOrNull() ?: 1
                 startTimer(minutes)
             }
-            // В остальных случаях - Умный диалог с ИИ
+            lower.contains("ютуб") -> {
+                respondToAI("Открываю YouTube, сэр.", true)
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://youtube.com")))
+            }
             else -> {
                 askSmartAI(command)
             }
         }
     }
 
-    private fun openApp(packageName: String, fallbackUrl: String? = null) {
-        try {
-            val intent = packageManager.getLaunchIntentForPackage(packageName)
-            if (intent != null) {
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivity(intent)
-            } else if (fallbackUrl != null) {
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fallbackUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            } else {
-                speak("Приложение не установлено.")
-            }
-        } catch (e: Exception) {}
+    private fun respondToAI(text: String, speakIt: Boolean = false) {
+        addMessageToChat("Джарвис", text, false)
+        if (speakIt) speak(text)
     }
 
     private fun startTimer(minutes: Int) {
         timer?.cancel()
-        val millisInFuture = minutes * 60 * 1000L
-        speak("Таймер на $minutes минут запущен")
-        timer = object : CountDownTimer(millisInFuture, 1000) {
-            override fun onTick(millisUntilFinished: Long) {
-                val seconds = millisUntilFinished / 1000
-                statusText.text = String.format("Осталось: %02d:%02d", seconds / 60, seconds % 60)
-            }
-            override fun onFinish() {
-                speak("Время вышло!")
-                statusText.text = "Таймер завершен!"
-            }
+        respondToAI("Таймер на $minutes минут запущен.", true)
+        timer = object : CountDownTimer(minutes * 60 * 1000L, 1000) {
+            override fun onTick(millisUntilFinished: Long) {}
+            override fun onFinish() { respondToAI("Сэр, время вышло!", true) }
         }.start()
     }
 
-    // --- МОЗГ И ПАМЯТЬ (SMART AI) ---
     private fun askSmartAI(question: String) {
-        statusText.text = "Думаю..."
+        val systemPrompt = "Ты - Джарвис. Отвечай кратко, вежливо, называй пользователя 'сэр'."
+        val context = if (chatHistory.size > 4) chatHistory.takeLast(4).joinToString("\n") else chatHistory.joinToString("\n")
+        val fullPrompt = "$systemPrompt\n$context\nПользователь: $question\nДжарвис:"
         
-        // 1. Формируем системный характер (Промпт)
-        val systemPrompt = "Ты - Джарвис, продвинутый ИИ-ассистент. Ты вежлив, учтив, называешь пользователя 'сэр' или 'шеф'. Ты обладаешь легким британским юмором. Отвечай кратко, информативно и по делу, максимум 3-4 предложения."
-        
-        // 2. Формируем историю диалога (Берем последние 4 сообщения, чтобы не перегрузить сервер)
-        val contextHistory = if (chatHistory.size > 4) {
-            chatHistory.takeLast(4).joinToString("\n")
-        } else {
-            chatHistory.joinToString("\n")
-        }
-
-        // 3. Собираем всё вместе
-        val fullPrompt = "$systemPrompt\n\nИстория диалога:\n$contextHistory\nПользователь: $question\nДжарвис:"
-        
-        val encodedPrompt = Uri.encode(fullPrompt)
-        val url = "https://text.pollinations.ai/$encodedPrompt"
-        
-        val request = Request.Builder()
-            .url(url)
-            .addHeader("User-Agent", "Mozilla/5.0 (Android)")
-            .build()
+        val url = "https://text.pollinations.ai/${Uri.encode(fullPrompt)}"
+        val request = Request.Builder().url(url).build()
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                runOnUiThread {
-                    speak("Связь с сервером потеряна, сэр.")
-                    statusText.text = "Ошибка сети"
-                }
+                runOnUiThread { respondToAI("Связь потеряна, сэр.") }
             }
 
             override fun onResponse(call: Call, response: Response) {
                 response.use {
                     if (response.isSuccessful) {
-                        val answer = response.body?.string()?.trim() ?: "Я не знаю, что ответить."
-                        
-                        // 4. СОХРАНЯЕМ В ПАМЯТЬ
-                        chatHistory.add("Пользователь: $question")
+                        val answer = response.body?.string()?.trim() ?: "Нет ответа."
+                        chatHistory.add("Вы: $question")
                         chatHistory.add("Джарвис: $answer")
-
                         runOnUiThread {
-                            statusText.text = "Джарвис: $answer"
+                            addMessageToChat("Джарвис", answer, false)
                             speak(answer)
-                        }
-                    } else {
-                        runOnUiThread {
-                            speak("Нейросеть перегружена. Попробуйте еще раз.")
                         }
                     }
                 }
@@ -311,15 +310,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == PERMISSION_REQUEST_CODE) {
-            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                startListening()
-            }
+        if (requestCode == PERMISSION_REQUEST_CODE && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            startListening()
         }
     }
 
     override fun onDestroy() {
-        tts?.stop()
         tts?.shutdown()
         speechRecognizer?.destroy()
         timer?.cancel()
