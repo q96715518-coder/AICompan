@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
@@ -17,6 +18,7 @@ import android.text.InputType
 import android.util.Base64
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -49,6 +51,14 @@ class MainActivity : AppCompatActivity() {
     private val PERMISSION_REQUEST_CODE = 123
     private val IMAGE_PICK_CODE = 456
 
+    // Цветовая палитра (Современная темная тема)
+    private val colorBg = Color.parseColor("#0F1115") // Глубокий темный фон
+    private val colorHeader = Color.parseColor("#1A1D24") // Шапка
+    private val colorUserBubble = Color.parseColor("#2563EB") // Синий для пользователя
+    private val colorAiBubble = Color.parseColor("#2A2D35") // Серый для Джарвиса
+    private val colorInputBg = Color.parseColor("#1A1D24") // Фон поля ввода
+    private val colorAccent = Color.parseColor("#38BDF8") // Голубой акцент (Cyan)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
@@ -58,83 +68,127 @@ class MainActivity : AppCompatActivity() {
         memoryFile = File(applicationContext.filesDir, "jarvis_memory.txt")
         if (!memoryFile.exists()) memoryFile.createNewFile()
 
-        // --- ИНТЕРФЕЙС ---
+        // --- ГЛАВНЫЙ МАКЕТ ---
         val mainLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#121212"))
+            setBackgroundColor(colorBg)
         }
 
+        // --- ШАПКА ---
         val headerLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.parseColor("#1E1E1E"))
-            setPadding(30, 30, 30, 30)
+            setBackgroundColor(colorHeader)
+            setPadding(40, 40, 40, 40)
             gravity = Gravity.CENTER_VERTICAL
+            elevation = 10f // Тень
         }
         
-        val title = TextView(this).apply {
-            text = "J.A.R.V.I.S. (v0.14.0 Vision)"
-            textSize = 18f
-            setTextColor(Color.CYAN)
-            setTypeface(null, Typeface.BOLD)
+        val titleLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
+
+        val title = TextView(this).apply {
+            text = "J.A.R.V.I.S."
+            textSize = 20f
+            setTextColor(Color.WHITE)
+            setTypeface(null, Typeface.BOLD)
+        }
         
-        val settingsBtn = Button(this).apply {
+        val status = TextView(this).apply {
+            text = "● Онлайн (v0.14.1)"
+            textSize = 12f
+            setTextColor(colorAccent)
+        }
+
+        titleLayout.addView(title)
+        titleLayout.addView(status)
+
+        val settingsBtn = TextView(this).apply {
             text = "⚙️"
-            setBackgroundColor(Color.TRANSPARENT)
-            setTextSize(20f)
+            textSize = 24f
+            setPadding(20, 20, 20, 20)
             setOnClickListener { showSettingsDialog() }
         }
 
-        headerLayout.addView(title)
+        headerLayout.addView(titleLayout)
         headerLayout.addView(settingsBtn)
 
+        // --- ОБЛАСТЬ ЧАТА ---
         chatScrollView = ScrollView(this).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+            isVerticalScrollBarEnabled = false
         }
         chatContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(20, 20, 20, 20)
+            setPadding(30, 30, 30, 30)
         }
         chatScrollView.addView(chatContainer)
 
-        val inputLayout = LinearLayout(this).apply {
+        // --- ПАНЕЛЬ ВВОДА ---
+        val inputContainer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.parseColor("#1E1E1E"))
-            setPadding(15, 15, 15, 15)
-            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(colorInputBg)
+            setPadding(30, 20, 30, 30)
+            gravity = Gravity.BOTTOM
         }
 
-        val attachBtn = Button(this).apply {
-            text = "📷" // Изменили на камеру/фото
-            setBackgroundColor(Color.TRANSPARENT)
-            setTextSize(20f)
+        // Красивое поле ввода с закруглениями
+        val inputBackground = GradientDrawable().apply {
+            setColor(Color.parseColor("#2A2D35"))
+            cornerRadius = 60f
+        }
+
+        val editTextLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            background = inputBackground
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setPadding(20, 0, 20, 0)
+        }
+
+        val attachBtn = TextView(this).apply {
+            text = "📷"
+            textSize = 20f
+            setTextColor(Color.GRAY)
+            setPadding(0, 0, 20, 0)
             setOnClickListener { openGallery() }
         }
 
         inputEditText = EditText(this).apply {
-            hint = "Сообщение..."
+            hint = "Написать сообщение..."
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#2C2C2C"))
+            setBackgroundColor(Color.TRANSPARENT)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            setPadding(20, 15, 20, 15)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                setMargins(10, 0, 10, 0)
-            }
+            maxLines = 4
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
-        val micBtn = Button(this).apply {
+        editTextLayout.addView(attachBtn)
+        editTextLayout.addView(inputEditText)
+
+        val micBtn = TextView(this).apply {
             text = "🎤"
-            setBackgroundColor(Color.TRANSPARENT)
-            setTextSize(20f)
+            textSize = 24f
+            setTextColor(colorAccent)
+            setPadding(30, 20, 30, 20)
             setOnClickListener { checkPermissionsAndStartListening() }
         }
 
-        val sendBtn = Button(this).apply {
+        // Кнопка отправки (синий кружок)
+        val sendBtnBackground = GradientDrawable().apply {
+            setColor(colorUserBubble)
+            shape = GradientDrawable.OVAL
+        }
+        val sendBtn = TextView(this).apply {
             text = "➤"
-            setBackgroundColor(Color.parseColor("#007AFF"))
+            textSize = 18f
             setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = sendBtnBackground
+            val size = 120 // Размер кнопки в пикселях
+            layoutParams = LinearLayout.LayoutParams(size, size)
             setOnClickListener {
                 val text = inputEditText.text.toString().trim()
                 if (text.isNotEmpty()) {
@@ -145,27 +199,69 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        inputLayout.addView(attachBtn)
-        inputLayout.addView(inputEditText)
-        inputLayout.addView(micBtn)
-        inputLayout.addView(sendBtn)
+        inputContainer.addView(editTextLayout)
+        inputContainer.addView(micBtn)
+        inputContainer.addView(sendBtn)
 
         mainLayout.addView(headerLayout)
         mainLayout.addView(chatScrollView)
-        mainLayout.addView(inputLayout)
+        mainLayout.addView(inputContainer)
 
         setContentView(mainLayout)
 
         initTts()
         initSpeechRecognizer()
         
-        addMessageToChat("Джарвис", "Системы готовы. Модуль зрения активирован. Слушаю вас, сэр.", false)
+        addMessageToChat("Джарвис", "Все системы в норме. Чем могу помочь, сэр?", false)
     }
 
-    // --- НАСТРОЙКИ ---
+    // --- МЕТОДЫ ИНТЕРФЕЙСА ---
+    private fun addMessageToChat(sender: String, message: String, isUser: Boolean) {
+        val messageLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = if (isUser) Gravity.END else Gravity.START
+            setPadding(0, 10, 0, 10)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(if (isUser) 60 else 0, 0, if (isUser) 0 else 60, 0) // Отступы по бокам
+            }
+        }
+
+        val bubbleLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(35, 25, 35, 25)
+            background = GradientDrawable().apply {
+                setColor(if (isUser) colorUserBubble else colorAiBubble)
+                cornerRadius = 50f
+                // Делаем "хвостик" пузыря (закругляем один угол)
+                if (isUser) {
+                    cornerRadii = floatArrayOf(50f, 50f, 50f, 50f, 50f, 50f, 10f, 10f)
+                } else {
+                    cornerRadii = floatArrayOf(50f, 50f, 50f, 50f, 10f, 10f, 50f, 50f)
+                }
+            }
+        }
+
+        val textView = TextView(this).apply {
+            text = message
+            setTextColor(Color.WHITE)
+            textSize = 16f
+            lineSpacingMultiplier = 1.2f
+        }
+
+        bubbleLayout.addView(textView)
+        messageLayout.addView(bubbleLayout)
+        chatContainer.addView(messageLayout)
+
+        chatScrollView.post { chatScrollView.fullScroll(View.FOCUS_DOWN) }
+    }
+
+    // --- ОСТАЛЬНАЯ ЛОГИКА (БЕЗ ИЗМЕНЕНИЙ, КРОМЕ UI) ---
     private fun showSettingsDialog() {
         val options = arrayOf("Вставить API-ключ Groq", "Очистить долговременную память")
-        val builder = android.app.AlertDialog.Builder(this)
+        val builder = android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
         builder.setTitle("Настройки")
         builder.setItems(options) { _, which ->
             when (which) {
@@ -177,13 +273,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showTokenDialog() {
-        val builder = android.app.AlertDialog.Builder(this)
+        val builder = android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
         builder.setTitle("Groq API (Llama-3.2 Vision)")
-        builder.setMessage("Вставьте API-ключ Groq (gsk_...). Он нужен для распознавания фото.")
+        builder.setMessage("Вставьте API-ключ Groq (gsk_...)")
 
         val input = EditText(this).apply {
             setText(groqToken)
             hint = "gsk_..."
+            setTextColor(Color.BLACK)
         }
         builder.setView(input)
 
@@ -208,37 +305,6 @@ class MainActivity : AppCompatActivity() {
         return if (memoryFile.exists()) memoryFile.readText().trim() else ""
     }
 
-    // --- ИНТЕРФЕЙС ---
-    private fun addMessageToChat(sender: String, message: String, isUser: Boolean) {
-        val messageLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = if (isUser) Gravity.END else Gravity.START
-            setPadding(0, 10, 0, 10)
-        }
-
-        val bubbleLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(30, 20, 30, 20)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(if (isUser) Color.parseColor("#007AFF") else Color.parseColor("#2C2C2C"))
-                cornerRadius = 40f
-            }
-        }
-
-        val textView = TextView(this).apply {
-            text = message
-            setTextColor(Color.WHITE)
-            textSize = 16f
-        }
-
-        bubbleLayout.addView(textView)
-        messageLayout.addView(bubbleLayout)
-        chatContainer.addView(messageLayout)
-
-        chatScrollView.post { chatScrollView.fullScroll(View.FOCUS_DOWN) }
-    }
-
-    // --- ВЫБОР ФОТО ---
     private fun openGallery() {
         val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
         startActivityForResult(intent, IMAGE_PICK_CODE)
@@ -248,32 +314,26 @@ class MainActivity : AppCompatActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == IMAGE_PICK_CODE && resultCode == Activity.RESULT_OK) {
             data?.data?.let { uri ->
-                addMessageToChat("Вы", "📷 [Отправлено фото]", true)
-                // Конвертируем фото в Base64 для отправки в ИИ
+                addMessageToChat("Вы", "📷 [Фото]", true)
                 val base64Image = encodeImageToBase64(uri)
                 if (base64Image != null) {
                     askVisionAI(base64Image)
                 } else {
-                    respondToAI("Не удалось прочитать изображение, сэр.")
+                    respondToAI("Не удалось прочитать фото.")
                 }
             }
         }
     }
 
-    // Конвертация картинки в Base64
     private fun encodeImageToBase64(uri: Uri): String? {
         return try {
             val inputStream: InputStream = contentResolver.openInputStream(uri) ?: return null
             val bytes = inputStream.readBytes()
             inputStream.close()
             Base64.encodeToString(bytes, Base64.NO_WRAP)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
+        } catch (e: Exception) { null }
     }
 
-    // --- ОЗВУЧКА ---
     private fun initTts() {
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
@@ -287,7 +347,6 @@ class MainActivity : AppCompatActivity() {
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "JarvisId")
     }
 
-    // --- РАСПОЗНАВАНИЕ ГОЛОСА ---
     private fun initSpeechRecognizer() {
         if (SpeechRecognizer.isRecognitionAvailable(this)) {
             speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
@@ -297,7 +356,7 @@ class MainActivity : AppCompatActivity() {
                 override fun onRmsChanged(rmsdB: Float) {}
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() {}
-                override fun onError(error: Int) { addMessageToChat("Система", "Не расслышал вас.", false) }
+                override fun onError(error: Int) { addMessageToChat("Система", "Не расслышал.", false) }
 
                 override fun onResults(results: Bundle?) {
                     val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
@@ -321,7 +380,6 @@ class MainActivity : AppCompatActivity() {
         speechRecognizer?.startListening(intent)
     }
 
-    // --- КОМАНДЫ ---
     private fun handleCommand(command: String) {
         val lower = command.lowercase(Locale.getDefault())
         when {
@@ -337,12 +395,10 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             lower.contains("ютуб") -> {
-                respondToAI("Открываю YouTube, сэр.", true)
+                respondToAI("Открываю YouTube.", true)
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://youtube.com")))
             }
-            else -> {
-                askSmartAI(command)
-            }
+            else -> askSmartAI(command)
         }
     }
 
@@ -351,41 +407,30 @@ class MainActivity : AppCompatActivity() {
         if (speakIt) speak(text)
     }
 
-    // --- МОДУЛЬ ЗРЕНИЯ (VISION) ---
     private fun askVisionAI(base64Image: String) {
         if (groqToken.isEmpty()) {
-            respondToAI("Сэр, для распознавания фото нужен ключ Groq. Вставьте его в настройках (⚙️).", true)
+            respondToAI("Для зрения нужен ключ Groq (в настройках).", true)
             return
         }
 
         val messagesArray = JSONArray()
         messagesArray.put(JSONObject().apply {
             put("role", "system")
-            put("content", "Ты — Джарвис. Опиши, что ты видишь на этом фото, кратко и по делу.")
+            put("content", "Ты — Джарвис. Опиши, что ты видишь на этом фото, кратко.")
         })
 
-        // Формируем мультимодальный запрос (Текст + Картинка)
         val contentArray = JSONArray()
-        contentArray.put(JSONObject().apply {
-            put("type", "text")
-            put("text", "Что на этом изображении?")
-        })
+        contentArray.put(JSONObject().apply { put("type", "text"); put("text", "Что на изображении?") })
         contentArray.put(JSONObject().apply {
             put("type", "image_url")
-            put("image_url", JSONObject().apply {
-                put("url", "data:image/jpeg;base64,$base64Image")
-            })
+            put("image_url", JSONObject().apply { put("url", "data:image/jpeg;base64,$base64Image") })
         })
 
-        messagesArray.put(JSONObject().apply {
-            put("role", "user")
-            put("content", contentArray)
-        })
+        messagesArray.put(JSONObject().apply { put("role", "user"); put("content", contentArray) })
 
         val jsonBody = JSONObject().apply {
-            put("model", "llama-3.2-11b-vision-preview") // Бесплатная Vision-модель от Groq
+            put("model", "llama-3.2-11b-vision-preview")
             put("messages", messagesArray)
-            put("max_tokens", 300)
         }
 
         val request = Request.Builder()
@@ -396,7 +441,7 @@ class MainActivity : AppCompatActivity() {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                runOnUiThread { respondToAI("Ошибка сети при отправке фото.") }
+                runOnUiThread { respondToAI("Ошибка сети.") }
             }
             override fun onResponse(call: Call, response: Response) {
                 response.use {
@@ -410,22 +455,20 @@ class MainActivity : AppCompatActivity() {
                                 speak(answer)
                             }
                         } catch (e: Exception) {
-                            runOnUiThread { respondToAI("Не смог разобрать ответ от Vision-модели.") }
+                            runOnUiThread { respondToAI("Ошибка Vision.") }
                         }
                     } else {
-                        runOnUiThread { respondToAI("Ошибка Vision API. Проверьте ключ. (Код ${response.code})") }
+                        runOnUiThread { respondToAI("Ошибка API (${response.code})") }
                     }
                 }
             }
         })
     }
 
-    // --- УМНЫЙ ТЕКСТОВЫЙ ИИ (С ПАМЯТЬЮ) ---
     private fun askSmartAI(question: String) {
         chatHistory.put(JSONObject().apply { put("role", "user"); put("content", question) })
-
         val memory = readMemory()
-        val memoryPrompt = if (memory.isNotEmpty()) "\nФакты о пользователе:\n$memory" else ""
+        val memoryPrompt = if (memory.isNotEmpty()) "\nФакты:\n$memory" else ""
 
         if (groqToken.isNotEmpty()) {
             val messagesArray = JSONArray()
@@ -436,10 +479,7 @@ class MainActivity : AppCompatActivity() {
             val startIdx = maxOf(0, chatHistory.length() - 6)
             for (i in startIdx until chatHistory.length()) { messagesArray.put(chatHistory.getJSONObject(i)) }
 
-            val jsonBody = JSONObject().apply {
-                put("model", "llama3-70b-8192")
-                put("messages", messagesArray)
-            }
+            val jsonBody = JSONObject().apply { put("model", "llama3-70b-8192"); put("messages", messagesArray) }
 
             val request = Request.Builder()
                 .url("https://api.groq.com/openai/v1/chat/completions")
@@ -453,9 +493,7 @@ class MainActivity : AppCompatActivity() {
                     response.use {
                         if (response.isSuccessful) {
                             try {
-                                val answer = JSONObject(response.body!!.string())
-                                    .getJSONArray("choices").getJSONObject(0)
-                                    .getJSONObject("message").getString("content")
+                                val answer = JSONObject(response.body!!.string()).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
                                 saveAndReply(answer)
                             } catch (e: Exception) { runOnUiThread { tryPuterAI(question, memoryPrompt) } }
                         } else { runOnUiThread { tryPuterAI(question, memoryPrompt) } }
@@ -467,47 +505,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // --- РЕЗЕРВ (PUTER.JS) ---
     private fun tryPuterAI(question: String, memoryPrompt: String) {
         val messagesArray = JSONArray()
-        messagesArray.put(JSONObject().apply { 
-            put("role", "system"); 
-            put("content", "Ты - Джарвис. Отвечай кратко, вежливо.$memoryPrompt") 
-        })
-        val startIdx = maxOf(0, chatHistory.length() - 4)
-        for (i in startIdx until chatHistory.length()) { messagesArray.put(chatHistory.getJSONObject(i)) }
-
-        val jsonBody = JSONObject().apply { put("messages", messagesArray) }
-        val request = Request.Builder()
-            .url("https://api.puter.com/drivers/call")
-            .post(jsonBody.toString().toRequestBody("application/json".toMediaType()))
-            .build()
-
-        client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) { runOnUiThread { respondToAI("Ошибка сети.") } }
-            override fun onResponse(call: Call, response: Response) {
-                response.use {
-                    if (response.isSuccessful) {
-                        try {
-                            val answer = JSONObject(response.body!!.string())
-                                .getJSONArray("choices").getJSONObject(0)
-                                .getJSONObject("message").getString("content")
-                            saveAndReply(answer)
-                        } catch (e: Exception) { runOnUiThread { respondToAI("Ошибка обработки.") } }
-                    } else { runOnUiThread { respondToAI("Сервер перегружен.") } }
-                }
-            }
-        })
-    }
-
-    private fun saveAndReply(answer: String) {
-        chatHistory.put(JSONObject().apply { put("role", "assistant"); put("content", answer) })
-        runOnUiThread {
-            addMessageToChat("Джарвис", answer, false)
-            speak(answer)
-        }
-    }
-
-    // --- РАЗРЕШЕНИЯ ---
-    private fun checkPermissionsAndStartListening() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != Pa
+        messagesArray.put(JSONObject().apply { put("role", "system"); put("content", "Ты - Джарвис. Отвечай кратко.$memoryPrompt") })
+        val startIdx = maxOf(0, ch
