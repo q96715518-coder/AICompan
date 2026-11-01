@@ -50,7 +50,6 @@ class MainActivity : AppCompatActivity() {
     private val PERMISSION_REQUEST_CODE = 123
     private val IMAGE_PICK_CODE = 456
 
-    // Цвета интерфейса
     private val colorBg = Color.parseColor("#0F1115")
     private val colorHeader = Color.parseColor("#1A1D24")
     private val colorUserBubble = Color.parseColor("#2563EB")
@@ -94,7 +93,7 @@ class MainActivity : AppCompatActivity() {
         }
         
         val status = TextView(this).apply {
-            text = "● Онлайн (v0.14.2)"
+            text = "● Онлайн (v0.15.0)"
             textSize = 12f
             setTextColor(colorAccent)
         }
@@ -211,7 +210,6 @@ class MainActivity : AppCompatActivity() {
         addMessageToChat("Джарвис", "Все системы в норме. Чем могу помочь, сэр?", false)
     }
 
-    // --- ИНТЕРФЕЙС ЧАТА ---
     private fun addMessageToChat(sender: String, message: String, isUser: Boolean) {
         val messageLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -253,7 +251,6 @@ class MainActivity : AppCompatActivity() {
         chatScrollView.post { chatScrollView.fullScroll(View.FOCUS_DOWN) }
     }
 
-    // --- НАСТРОЙКИ ---
     private fun showSettingsDialog() {
         val options = arrayOf("Вставить API-ключ Groq", "Очистить память")
         val builder = android.app.AlertDialog.Builder(this)
@@ -299,7 +296,6 @@ class MainActivity : AppCompatActivity() {
         return if (memoryFile.exists()) memoryFile.readText().trim() else ""
     }
 
-    // --- ГАЛЕРЕЯ ---
     private fun openGallery() {
         val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
         startActivityForResult(intent, IMAGE_PICK_CODE)
@@ -329,7 +325,6 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { null }
     }
 
-    // --- TTS И РАСПОЗНАВАНИЕ ---
     private fun initTts() {
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
@@ -376,7 +371,6 @@ class MainActivity : AppCompatActivity() {
         speechRecognizer?.startListening(intent)
     }
 
-    // --- КОМАНДЫ ---
     private fun handleCommand(command: String) {
         val lower = command.lowercase(Locale.getDefault())
         when {
@@ -404,7 +398,6 @@ class MainActivity : AppCompatActivity() {
         if (speakIt) speak(text)
     }
 
-    // --- VISION (ЗРЕНИЕ) ---
     private fun askVisionAI(base64Image: String) {
         if (groqToken.isEmpty()) {
             respondToAI("Для зрения нужен ключ Groq (в настройках).", true)
@@ -463,7 +456,6 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    // --- УМНЫЙ ТЕКСТОВЫЙ ИИ ---
     private fun askSmartAI(question: String) {
         chatHistory.put(JSONObject().apply { put("role", "user"); put("content", question) })
         val memory = readMemory()
@@ -504,7 +496,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // --- РЕЗЕРВНЫЙ ИИ ---
     private fun tryPuterAI(question: String, memoryPrompt: String) {
         val messagesArray = JSONArray()
         messagesArray.put(JSONObject().apply { put("role", "system"); put("content", "Ты - Джарвис. Отвечай кратко.$memoryPrompt") })
@@ -517,4 +508,8 @@ class MainActivity : AppCompatActivity() {
             .post(jsonBody.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
-        client.newCall(request).enqueue(object :
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) { runOnUiThread { respondToAI("Ошибка сети.") } }
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    if (res
