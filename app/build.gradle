@@ -13,8 +13,8 @@ android {
         targetSdk 34
         
         // ТВОЯ НОВАЯ ВЕРСИЯ
-        versionCode 3
-        versionName "0.6.0"
+        versionCode 4
+versionName "0.7.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         
