@@ -1,7 +1,6 @@
 package com.example.aicompanion
 
 import android.Manifest
-import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -21,9 +20,15 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
 
@@ -32,6 +37,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusText: TextView
     private var timer: CountDownTimer? = null
     
+    // Настройки OkHttp для запросов к ИИ
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .build()
+
+    // ВСТАВЬ СЮДА СВОЙ API КЛЮЧ OPENAI
+    private val OPENAI_API_KEY = "sk-..." 
+
     private val PERMISSION_REQUEST_CODE = 123
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,7 +67,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val versionText = TextView(this).apply {
-            text = "v0.7.1"
+            text = "v0.8.0"
             textSize = 14f
             setTextColor(Color.GRAY)
             gravity = Gravity.CENTER
@@ -151,8 +166,8 @@ class MainActivity : AppCompatActivity() {
                 statusText.text = "Дата: $date"
             }
 
-            // 2. Открытие приложений и сайтов
-            command.contains("браузер") || command.contains("интернет") -> {
+            // 2. Приложения (как раньше)
+            command.contains("браузер") -> {
                 speak("Открываю браузер")
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com")))
             }
@@ -160,24 +175,23 @@ class MainActivity : AppCompatActivity() {
                 speak("Открываю Телеграм")
                 openApp("org.telegram.messenger", "https://web.telegram.org")
             }
-            command.contains("тик ток") || command.contains("тикток") || command.contains("tiktok") -> {
+            command.contains("тик ток") || command.contains("тикток") -> {
                 speak("Открываю Тик Ток")
                 openApp("com.zhiliaoapp.musically")
             }
-            command.contains("роблокс") || command.contains("roblox") -> {
+            command.contains("роблокс") -> {
                 speak("Открываю Роблокс")
                 openApp("com.roblox.client")
             }
-            command.contains("бравл") || command.contains("brawl") -> {
+            command.contains("бравл") -> {
                 speak("Запускаю Бравл Старс")
                 openApp("com.supercell.brawlstars")
             }
-            // НОВЫЕ ПРИЛОЖЕНИЯ
             command.contains("яндекс музыка") || command.contains("музыка") -> {
                 speak("Включаю Яндекс Музыку")
                 openApp("ru.yandex.music")
             }
-            command.contains("ютуб") || command.contains("youtube") -> {
+            command.contains("ютуб") -> {
                 speak("Открываю YouTube")
                 openApp("com.google.android.youtube", "https://youtube.com")
             }
@@ -195,9 +209,9 @@ class MainActivity : AppCompatActivity() {
                 statusText.text = "Таймер отменен"
             }
 
+            // 4. УМНЫЙ РЕЖИМ (Если команда не распознана, спрашиваем ИИ)
             else -> {
-                speak("Я не знаю такой команды")
-                statusText.text = "Команда не распознана"
+                askAI(command)
             }
         }
     }
@@ -221,7 +235,6 @@ class MainActivity : AppCompatActivity() {
     private fun startTimer(minutes: Int) {
         timer?.cancel()
         val millisInFuture = minutes * 60 * 1000L
-        
         speak("Таймер на $minutes минут запущен")
         statusText.text = "Таймер: $minutes мин."
 
@@ -232,12 +245,78 @@ class MainActivity : AppCompatActivity() {
                 val s = seconds % 60
                 statusText.text = String.format("Осталось: %02d:%02d", m, s)
             }
-
             override fun onFinish() {
                 speak("Время вышло!")
                 statusText.text = "Таймер завершен!"
             }
         }.start()
+    }
+
+    // --- МОЗГ: ЗАПРОС К OPENAI ---
+    private fun askAI(question: String) {
+        statusText.text = "Думаю..."
+        
+        // Если ключ не вставлен, выдаем ошибку
+        if (OPENAI_API_KEY == "sk-...") {
+            speak("Извините, мой искусственный интеллект не настроен.")
+            statusText.text = "Нужен API ключ OpenAI"
+            return
+        }
+
+        val json = """
+            {
+                "model": "gpt-3.5-turbo",
+                "messages": [
+                    {"role": "system", "content": "Ты - Джарвис, умный и вежливый голосовой ассистент. Отвечай кратко и по делу, максимум 2-3 предложения."},
+                    {"role": "user", "content": "$question"}
+                ]
+            }
+        """.trimIndent()
+
+        val requestBody = json.toRequestBody("application/json".toMediaType())
+        val request = Request.Builder()
+            .url("https://api.openai.com/v1/chat/completions")
+            .addHeader("Authorization", "Bearer $OPENAI_API_KEY")
+            .post(requestBody)
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                runOnUiThread {
+                    speak("Ошибка сети. Не могу связаться с сервером.")
+                    statusText.text = "Ошибка сети"
+                }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    if (!response.isSuccessful) {
+                        runOnUiThread {
+                            speak("Ошибка сервера. Возможно, проблема с ключом.")
+                            statusText.text = "Ошибка API"
+                        }
+                        return
+                    }
+                    val responseData = response.body?.string()
+                    try {
+                        val jsonObject = JSONObject(responseData!!)
+                        val answer = jsonObject.getJSONArray("choices")
+                            .getJSONObject(0)
+                            .getJSONObject("message")
+                            .getString("content")
+                            
+                        runOnUiThread {
+                            statusText.text = "Джарвис: $answer"
+                            speak(answer)
+                        }
+                    } catch (e: Exception) {
+                        runOnUiThread {
+                            speak("Не смог разобрать ответ.")
+                        }
+                    }
+                }
+            }
+        })
     }
 
     // --- РАЗРЕШЕНИЯ ---
