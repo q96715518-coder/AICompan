@@ -8,13 +8,13 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
-import android.os.CountDownTimer
 import android.provider.MediaStore
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.text.InputType
+import android.util.Base64
 import android.view.Gravity
 import android.view.View
 import android.widget.*
@@ -26,7 +26,9 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.io.IOException
+import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -38,22 +40,23 @@ class MainActivity : AppCompatActivity() {
     private lateinit var chatScrollView: ScrollView
     private lateinit var chatContainer: LinearLayout
     private lateinit var inputEditText: EditText
-    private var timer: CountDownTimer? = null
     
-    // Память и настройки
     private val chatHistory = JSONArray()
     private var groqToken: String = ""
-    
-    private val client = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).build()
+    private lateinit var memoryFile: File
+
+    private val client = OkHttpClient.Builder().connectTimeout(60, TimeUnit.SECONDS).build()
     private val PERMISSION_REQUEST_CODE = 123
     private val IMAGE_PICK_CODE = 456
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Загружаем ключ Groq (если он есть)
         val prefs = getSharedPreferences("JarvisPrefs", MODE_PRIVATE)
         groqToken = prefs.getString("GROQ_TOKEN", "") ?: ""
+        
+        memoryFile = File(applicationContext.filesDir, "jarvis_memory.txt")
+        if (!memoryFile.exists()) memoryFile.createNewFile()
 
         // --- ИНТЕРФЕЙС ---
         val mainLayout = LinearLayout(this).apply {
@@ -69,8 +72,8 @@ class MainActivity : AppCompatActivity() {
         }
         
         val title = TextView(this).apply {
-            text = "J.A.R.V.I.S. (v0.12.0)"
-            textSize = 20f
+            text = "J.A.R.V.I.S. (v0.14.0 Vision)"
+            textSize = 18f
             setTextColor(Color.CYAN)
             setTypeface(null, Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -80,7 +83,7 @@ class MainActivity : AppCompatActivity() {
             text = "⚙️"
             setBackgroundColor(Color.TRANSPARENT)
             setTextSize(20f)
-            setOnClickListener { showTokenDialog() }
+            setOnClickListener { showSettingsDialog() }
         }
 
         headerLayout.addView(title)
@@ -103,8 +106,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         val attachBtn = Button(this).apply {
-            text = "📎"
+            text = "📷" // Изменили на камеру/фото
             setBackgroundColor(Color.TRANSPARENT)
+            setTextSize(20f)
             setOnClickListener { openGallery() }
         }
 
@@ -123,6 +127,7 @@ class MainActivity : AppCompatActivity() {
         val micBtn = Button(this).apply {
             text = "🎤"
             setBackgroundColor(Color.TRANSPARENT)
+            setTextSize(20f)
             setOnClickListener { checkPermissionsAndStartListening() }
         }
 
@@ -154,19 +159,31 @@ class MainActivity : AppCompatActivity() {
         initTts()
         initSpeechRecognizer()
         
-        addMessageToChat("Джарвис", "Системы готовы. Уровень интеллекта: Максимальный (Каскадный). Слушаю вас, сэр.", false)
+        addMessageToChat("Джарвис", "Системы готовы. Модуль зрения активирован. Слушаю вас, сэр.", false)
     }
 
-    // --- НАСТРОЙКИ GROQ ---
+    // --- НАСТРОЙКИ ---
+    private fun showSettingsDialog() {
+        val options = arrayOf("Вставить API-ключ Groq", "Очистить долговременную память")
+        val builder = android.app.AlertDialog.Builder(this)
+        builder.setTitle("Настройки")
+        builder.setItems(options) { _, which ->
+            when (which) {
+                0 -> showTokenDialog()
+                1 -> clearMemory()
+            }
+        }
+        builder.show()
+    }
+
     private fun showTokenDialog() {
         val builder = android.app.AlertDialog.Builder(this)
-        builder.setTitle("Настройки Groq (Llama-3)")
-        builder.setMessage("Вставьте API-ключ Groq для максимального интеллекта.\n(Оставьте пустым для использования бесплатных прокси).")
+        builder.setTitle("Groq API (Llama-3.2 Vision)")
+        builder.setMessage("Вставьте API-ключ Groq (gsk_...). Он нужен для распознавания фото.")
 
         val input = EditText(this).apply {
             setText(groqToken)
             hint = "gsk_..."
-            inputType = InputType.TYPE_CLASS_TEXT
         }
         builder.setView(input)
 
@@ -174,14 +191,24 @@ class MainActivity : AppCompatActivity() {
             groqToken = input.text.toString().trim()
             val prefs = getSharedPreferences("JarvisPrefs", MODE_PRIVATE)
             prefs.edit().putString("GROQ_TOKEN", groqToken).apply()
-            addMessageToChat("Система", "Настройки сохранены.", false)
+            addMessageToChat("Система", "Ключ сохранен.", false)
             dialog.dismiss()
         }
         builder.setNegativeButton("Отмена") { dialog, _ -> dialog.dismiss() }
         builder.show()
     }
 
-    // --- МЕТОДЫ ИНТЕРФЕЙСА ---
+    private fun clearMemory() {
+        memoryFile.writeText("")
+        addMessageToChat("Система", "Память очищена.", false)
+        speak("Я всё забыл, сэр.")
+    }
+
+    private fun readMemory(): String {
+        return if (memoryFile.exists()) memoryFile.readText().trim() else ""
+    }
+
+    // --- ИНТЕРФЕЙС ---
     private fun addMessageToChat(sender: String, message: String, isUser: Boolean) {
         val messageLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -211,6 +238,7 @@ class MainActivity : AppCompatActivity() {
         chatScrollView.post { chatScrollView.fullScroll(View.FOCUS_DOWN) }
     }
 
+    // --- ВЫБОР ФОТО ---
     private fun openGallery() {
         val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
         startActivityForResult(intent, IMAGE_PICK_CODE)
@@ -219,14 +247,33 @@ class MainActivity : AppCompatActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == IMAGE_PICK_CODE && resultCode == Activity.RESULT_OK) {
-            data?.data?.let {
-                addMessageToChat("Вы", "📷 [Фото]", true)
-                askSmartAI("Я отправил фото.")
+            data?.data?.let { uri ->
+                addMessageToChat("Вы", "📷 [Отправлено фото]", true)
+                // Конвертируем фото в Base64 для отправки в ИИ
+                val base64Image = encodeImageToBase64(uri)
+                if (base64Image != null) {
+                    askVisionAI(base64Image)
+                } else {
+                    respondToAI("Не удалось прочитать изображение, сэр.")
+                }
             }
         }
     }
 
-    // --- ОЗВУЧКА И РАСПОЗНАВАНИЕ ---
+    // Конвертация картинки в Base64
+    private fun encodeImageToBase64(uri: Uri): String? {
+        return try {
+            val inputStream: InputStream = contentResolver.openInputStream(uri) ?: return null
+            val bytes = inputStream.readBytes()
+            inputStream.close()
+            Base64.encodeToString(bytes, Base64.NO_WRAP)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    // --- ОЗВУЧКА ---
     private fun initTts() {
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
@@ -240,6 +287,7 @@ class MainActivity : AppCompatActivity() {
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "JarvisId")
     }
 
+    // --- РАСПОЗНАВАНИЕ ГОЛОСА ---
     private fun initSpeechRecognizer() {
         if (SpeechRecognizer.isRecognitionAvailable(this)) {
             speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
@@ -273,13 +321,20 @@ class MainActivity : AppCompatActivity() {
         speechRecognizer?.startListening(intent)
     }
 
-    // --- ОБРАБОТКА КОМАНД ---
+    // --- КОМАНДЫ ---
     private fun handleCommand(command: String) {
         val lower = command.lowercase(Locale.getDefault())
         when {
             lower.contains("время") -> {
                 val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                 respondToAI("Сейчас $time", true)
+            }
+            lower.contains("запомни") -> {
+                val fact = command.replace("запомни", "", ignoreCase = true).trim()
+                if (fact.isNotEmpty()) {
+                    memoryFile.appendText("- $fact\n")
+                    respondToAI("Я запомнил: $fact", true)
+                }
             }
             lower.contains("ютуб") -> {
                 respondToAI("Открываю YouTube, сэр.", true)
@@ -296,15 +351,87 @@ class MainActivity : AppCompatActivity() {
         if (speakIt) speak(text)
     }
 
-    // --- УРОВЕНЬ 1: GROQ (Самый умный) ---
+    // --- МОДУЛЬ ЗРЕНИЯ (VISION) ---
+    private fun askVisionAI(base64Image: String) {
+        if (groqToken.isEmpty()) {
+            respondToAI("Сэр, для распознавания фото нужен ключ Groq. Вставьте его в настройках (⚙️).", true)
+            return
+        }
+
+        val messagesArray = JSONArray()
+        messagesArray.put(JSONObject().apply {
+            put("role", "system")
+            put("content", "Ты — Джарвис. Опиши, что ты видишь на этом фото, кратко и по делу.")
+        })
+
+        // Формируем мультимодальный запрос (Текст + Картинка)
+        val contentArray = JSONArray()
+        contentArray.put(JSONObject().apply {
+            put("type", "text")
+            put("text", "Что на этом изображении?")
+        })
+        contentArray.put(JSONObject().apply {
+            put("type", "image_url")
+            put("image_url", JSONObject().apply {
+                put("url", "data:image/jpeg;base64,$base64Image")
+            })
+        })
+
+        messagesArray.put(JSONObject().apply {
+            put("role", "user")
+            put("content", contentArray)
+        })
+
+        val jsonBody = JSONObject().apply {
+            put("model", "llama-3.2-11b-vision-preview") // Бесплатная Vision-модель от Groq
+            put("messages", messagesArray)
+            put("max_tokens", 300)
+        }
+
+        val request = Request.Builder()
+            .url("https://api.groq.com/openai/v1/chat/completions")
+            .addHeader("Authorization", "Bearer $groqToken")
+            .post(jsonBody.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                runOnUiThread { respondToAI("Ошибка сети при отправке фото.") }
+            }
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    if (response.isSuccessful) {
+                        try {
+                            val answer = JSONObject(response.body!!.string())
+                                .getJSONArray("choices").getJSONObject(0)
+                                .getJSONObject("message").getString("content")
+                            runOnUiThread {
+                                addMessageToChat("Джарвис", answer, false)
+                                speak(answer)
+                            }
+                        } catch (e: Exception) {
+                            runOnUiThread { respondToAI("Не смог разобрать ответ от Vision-модели.") }
+                        }
+                    } else {
+                        runOnUiThread { respondToAI("Ошибка Vision API. Проверьте ключ. (Код ${response.code})") }
+                    }
+                }
+            }
+        })
+    }
+
+    // --- УМНЫЙ ТЕКСТОВЫЙ ИИ (С ПАМЯТЬЮ) ---
     private fun askSmartAI(question: String) {
         chatHistory.put(JSONObject().apply { put("role", "user"); put("content", question) })
+
+        val memory = readMemory()
+        val memoryPrompt = if (memory.isNotEmpty()) "\nФакты о пользователе:\n$memory" else ""
 
         if (groqToken.isNotEmpty()) {
             val messagesArray = JSONArray()
             messagesArray.put(JSONObject().apply { 
                 put("role", "system"); 
-                put("content", "Ты — ИИ-ассистент Джарвис. Обращайся 'сэр'. Отвечай кратко.") 
+                put("content", "Ты — Джарвис. Обращайся 'сэр'. Отвечай кратко.$memoryPrompt") 
             })
             val startIdx = maxOf(0, chatHistory.length() - 6)
             for (i in startIdx until chatHistory.length()) { messagesArray.put(chatHistory.getJSONObject(i)) }
@@ -321,7 +448,7 @@ class MainActivity : AppCompatActivity() {
                 .build()
 
             client.newCall(request).enqueue(object : Callback {
-                override fun onFailure(call: Call, e: IOException) { runOnUiThread { tryPuterAI(question) } }
+                override fun onFailure(call: Call, e: IOException) { runOnUiThread { tryPuterAI(question, memoryPrompt) } }
                 override fun onResponse(call: Call, response: Response) {
                     response.use {
                         if (response.isSuccessful) {
@@ -330,20 +457,23 @@ class MainActivity : AppCompatActivity() {
                                     .getJSONArray("choices").getJSONObject(0)
                                     .getJSONObject("message").getString("content")
                                 saveAndReply(answer)
-                            } catch (e: Exception) { runOnUiThread { tryPuterAI(question) } }
-                        } else { runOnUiThread { tryPuterAI(question) } }
+                            } catch (e: Exception) { runOnUiThread { tryPuterAI(question, memoryPrompt) } }
+                        } else { runOnUiThread { tryPuterAI(question, memoryPrompt) } }
                     }
                 }
             })
         } else {
-            tryPuterAI(question) // Если ключа нет, сразу идем на уровень 2
+            tryPuterAI(question, memoryPrompt)
         }
     }
 
-    // --- УРОВЕНЬ 2: PUTER.JS (Бесплатный GPT-4) ---
-    private fun tryPuterAI(question: String) {
+    // --- РЕЗЕРВ (PUTER.JS) ---
+    private fun tryPuterAI(question: String, memoryPrompt: String) {
         val messagesArray = JSONArray()
-        messagesArray.put(JSONObject().apply { put("role", "system"); put("content", "Ты - Джарвис. Отвечай кратко, вежливо.") })
+        messagesArray.put(JSONObject().apply { 
+            put("role", "system"); 
+            put("content", "Ты - Джарвис. Отвечай кратко, вежливо.$memoryPrompt") 
+        })
         val startIdx = maxOf(0, chatHistory.length() - 4)
         for (i in startIdx until chatHistory.length()) { messagesArray.put(chatHistory.getJSONObject(i)) }
 
@@ -354,7 +484,7 @@ class MainActivity : AppCompatActivity() {
             .build()
 
         client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) { runOnUiThread { tryFallbackAI(question) } }
+            override fun onFailure(call: Call, e: IOException) { runOnUiThread { respondToAI("Ошибка сети.") } }
             override fun onResponse(call: Call, response: Response) {
                 response.use {
                     if (response.isSuccessful) {
@@ -363,30 +493,8 @@ class MainActivity : AppCompatActivity() {
                                 .getJSONArray("choices").getJSONObject(0)
                                 .getJSONObject("message").getString("content")
                             saveAndReply(answer)
-                        } catch (e: Exception) { runOnUiThread { tryFallbackAI(question) } }
-                    } else { runOnUiThread { tryFallbackAI(question) } }
-                }
-            }
-        })
-    }
-
-    // --- УРОВЕНЬ 3: POLLINATIONS (Самый надежный резерв) ---
-    private fun tryFallbackAI(question: String) {
-        val url = "https://text.pollinations.ai/${Uri.encode("Ты Джарвис. Отвечай кратко. Вопрос: $question")}"
-        val request = Request.Builder().url(url).build()
-
-        client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                runOnUiThread { respondToAI("Все сервера ИИ недоступны, сэр. Проверьте интернет.") }
-            }
-            override fun onResponse(call: Call, response: Response) {
-                response.use {
-                    if (response.isSuccessful) {
-                        val answer = response.body?.string()?.trim() ?: "Нет ответа."
-                        saveAndReply(answer)
-                    } else {
-                        runOnUiThread { respondToAI("Нейросети перегружены, сэр.") }
-                    }
+                        } catch (e: Exception) { runOnUiThread { respondToAI("Ошибка обработки.") } }
+                    } else { runOnUiThread { respondToAI("Сервер перегружен.") } }
                 }
             }
         })
@@ -402,24 +510,4 @@ class MainActivity : AppCompatActivity() {
 
     // --- РАЗРЕШЕНИЯ ---
     private fun checkPermissionsAndStartListening() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), PERMISSION_REQUEST_CODE)
-        } else {
-            startListening()
-        }
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == PERMISSION_REQUEST_CODE && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            startListening()
-        }
-    }
-
-    override fun onDestroy() {
-        tts?.shutdown()
-        speechRecognizer?.destroy()
-        timer?.cancel()
-        super.onDestroy()
-    }
-}
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != Pa
