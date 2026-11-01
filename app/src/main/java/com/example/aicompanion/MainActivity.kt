@@ -50,7 +50,7 @@ class MainActivity : AppCompatActivity() {
     private val PERMISSION_REQUEST_CODE = 123
     private val IMAGE_PICK_CODE = 456
 
-    // Цвета
+    // Цвета интерфейса
     private val colorBg = Color.parseColor("#0F1115")
     private val colorHeader = Color.parseColor("#1A1D24")
     private val colorUserBubble = Color.parseColor("#2563EB")
@@ -517,4 +517,4 @@ class MainActivity : AppCompatActivity() {
             .post(jsonBody.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
-        client.newCall(request).enqueue(object : Callback {
+        client.newCall(request).enqueue(object :
