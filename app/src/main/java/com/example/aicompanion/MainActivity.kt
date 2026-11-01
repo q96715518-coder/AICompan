@@ -13,16 +13,13 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
+import android.text.InputType
 import android.view.Gravity
-import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import okhttp3.*
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONObject
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -34,6 +31,7 @@ class MainActivity : AppCompatActivity() {
     private var tts: TextToSpeech? = null
     private var speechRecognizer: SpeechRecognizer? = null
     private lateinit var statusText: TextView
+    private lateinit var inputEditText: EditText
     private var timer: CountDownTimer? = null
     
     private val client = OkHttpClient.Builder()
@@ -62,7 +60,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val versionText = TextView(this).apply {
-            text = "v0.9.0 (Панель управления)"
+            text = "v0.9.5 (Голос + Текст)"
             textSize = 14f
             setTextColor(Color.GRAY)
             gravity = Gravity.CENTER
@@ -71,14 +69,39 @@ class MainActivity : AppCompatActivity() {
 
         statusText = TextView(this).apply {
             text = "Система в режиме ожидания"
-            textSize = 18f
+            textSize = 16f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
-            setPadding(0, 30, 0, 30)
+            setPadding(0, 20, 0, 20)
         }
 
-        val startButton = Button(this).apply {
-            text = "Начать диалог"
+        // --- ПОЛЕ ВВОДА ТЕКСТА ---
+        inputEditText = EditText(this).apply {
+            hint = "Напишите команду или вопрос..."
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.GRAY)
+            setBackgroundColor(Color.parseColor("#333333"))
+            inputType = InputType.TYPE_CLASS_TEXT
+            setPadding(20, 20, 20, 20)
+        }
+
+        // --- КНОПКА ОТПРАВКИ ТЕКСТА ---
+        val sendButton = Button(this).apply {
+            text = "Отправить текст"
+            setBackgroundColor(Color.parseColor("#4CAF50"))
+            setOnClickListener {
+                val textCommand = inputEditText.text.toString().trim()
+                if (textCommand.isNotEmpty()) {
+                    statusText.text = "Вы (текст): $textCommand"
+                    handleCommand(textCommand)
+                    inputEditText.text.clear()
+                }
+            }
+        }
+
+        // --- КНОПКА ГОЛОСОВОГО ВВОДА ---
+        val voiceButton = Button(this).apply {
+            text = "Сказать голосом 🎤"
             setBackgroundColor(Color.CYAN)
             setTextColor(Color.BLACK)
             setOnClickListener {
@@ -88,6 +111,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // --- КНОПКА НАСТРОЕК ---
         val settingsButton = Button(this).apply {
             text = "Настройки"
             setOnClickListener {
@@ -95,7 +119,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // ВАЖНАЯ КНОПКА ДЛЯ АНДРОИД 11+ (Чтобы он мог открывать другие приложения)
+        // --- КНОПКА РАЗРЕШЕНИЙ (Для Android 11+) ---
         val overlayButton = Button(this).apply {
             text = "Разрешить запуск приложений"
             setBackgroundColor(Color.parseColor("#FF9800"))
@@ -114,7 +138,9 @@ class MainActivity : AppCompatActivity() {
         layout.addView(title)
         layout.addView(versionText)
         layout.addView(statusText)
-        layout.addView(startButton)
+        layout.addView(inputEditText)
+        layout.addView(sendButton)
+        layout.addView(voiceButton)
         layout.addView(settingsButton)
         layout.addView(overlayButton)
 
@@ -136,7 +162,7 @@ class MainActivity : AppCompatActivity() {
 
         val speedSeekBar = SeekBar(this).apply {
             max = 150
-            progress = 95 // По умолчанию 0.95
+            progress = 95
         }
         val speedText = TextView(this).apply { text = "Скорость речи: 0.95" }
 
@@ -152,7 +178,7 @@ class MainActivity : AppCompatActivity() {
 
         val pitchSeekBar = SeekBar(this).apply {
             max = 200
-            progress = 85 // По умолчанию 0.85
+            progress = 85
         }
         val pitchText = TextView(this).apply { text = "Высота голоса: 0.85" }
 
@@ -195,7 +221,7 @@ class MainActivity : AppCompatActivity() {
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "JarvisUtteranceId")
     }
 
-    // --- РАСПОЗНАВАНИЕ ---
+    // --- РАСПОЗНАВАНИЕ ГОЛОСА ---
     private fun initSpeechRecognizer() {
         if (SpeechRecognizer.isRecognitionAvailable(this)) {
             speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
@@ -205,13 +231,13 @@ class MainActivity : AppCompatActivity() {
                 override fun onRmsChanged(rmsdB: Float) {}
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() { statusText.text = "Обрабатываю..." }
-                override fun onError(error: Int) { statusText.text = "Не расслышал. Нажмите еще раз." }
+                override fun onError(error: Int) { statusText.text = "Не расслышал. Попробуйте еще раз." }
 
                 override fun onResults(results: Bundle?) {
                     val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     if (!matches.isNullOrEmpty()) {
                         val command = matches[0].lowercase(Locale.getDefault())
-                        statusText.text = "Вы: $command"
+                        statusText.text = "Вы (голос): $command"
                         handleCommand(command)
                     }
                 }
@@ -229,66 +255,67 @@ class MainActivity : AppCompatActivity() {
         speechRecognizer?.startListening(intent)
     }
 
-    // --- ОБРАБОТКА КОМАНД ---
+    // --- ОБРАБОТКА КОМАНД (ОБЩАЯ ДЛЯ ТЕКСТА И ГОЛОСА) ---
     private fun handleCommand(command: String) {
+        val lowerCommand = command.lowercase(Locale.getDefault())
         when {
-            command.contains("время") -> {
+            lowerCommand.contains("время") -> {
                 val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                 speak("Сейчас $time")
                 statusText.text = "Время: $time"
             }
-            command.contains("дата") || command.contains("число") -> {
+            lowerCommand.contains("дата") || lowerCommand.contains("число") -> {
                 val date = SimpleDateFormat("d MMMM yyyy", Locale("ru")).format(Date())
                 speak("Сегодня $date")
                 statusText.text = "Дата: $date"
             }
-            command.contains("браузер") -> {
+            lowerCommand.contains("браузер") -> {
                 speak("Открываю браузер")
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com")))
             }
-            command.contains("телеграм") || command.contains("telegram") -> {
+            lowerCommand.contains("телеграм") || lowerCommand.contains("telegram") -> {
                 speak("Открываю Телеграм")
                 openApp("org.telegram.messenger", "https://web.telegram.org")
             }
-            command.contains("тик ток") || command.contains("тикток") -> {
+            lowerCommand.contains("тик ток") || lowerCommand.contains("тикток") -> {
                 speak("Открываю Тик Ток")
                 openApp("com.zhiliaoapp.musically")
             }
-            command.contains("роблокс") -> {
+            lowerCommand.contains("роблокс") -> {
                 speak("Открываю Роблокс")
                 openApp("com.roblox.client")
             }
-            command.contains("бравл") -> {
+            lowerCommand.contains("бравл") -> {
                 speak("Запускаю Бравл Старс")
                 openApp("com.supercell.brawlstars")
             }
-            command.contains("яндекс музыка") || command.contains("музыка") -> {
+            lowerCommand.contains("яндекс музыка") || lowerCommand.contains("музыка") -> {
                 speak("Включаю Яндекс Музыку")
                 openApp("ru.yandex.music")
             }
-            command.contains("ютуб") -> {
+            lowerCommand.contains("ютуб") -> {
                 speak("Открываю YouTube")
                 openApp("com.google.android.youtube", "https://youtube.com")
             }
-            command.contains("таймер") -> {
+            lowerCommand.contains("таймер") -> {
                 speak("На сколько минут поставить таймер?")
-                statusText.text = "Скажите количество минут..."
-                val minutes = command.filter { it.isDigit() }.toIntOrNull() ?: 1
+                statusText.text = "Скажите или напишите количество минут..."
+                val minutes = lowerCommand.filter { it.isDigit() }.toIntOrNull() ?: 1
                 startTimer(minutes)
             }
-            command.contains("стоп") || command.contains("отмена") -> {
+            lowerCommand.contains("стоп") || lowerCommand.contains("отмена") -> {
                 timer?.cancel()
                 speak("Таймер отменен")
                 statusText.text = "Таймер отменен"
             }
-            // Вопрос к ИИ
+            // Если команда не распознана, идем к ИИ
             else -> {
                 askAI(command)
             }
         }
     }
 
-    // --- ИСПРАВЛЕННЫЙ ЗАПУСК ПРИЛОЖЕНИЙ ---
+    // --- ЗАПУСК ПРИЛОЖЕНИЙ ---
     private fun openApp(packageName: String, fallbackUrl: String? = null) {
         try {
             val intent = packageManager.getLaunchIntentForPackage(packageName)
@@ -329,11 +356,10 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    // --- НАДЕЖНЫЙ БЕСПЛАТНЫЙ ИИ (POLLINATIONS) ---
+    // --- БЕСПЛАТНЫЙ ИИ ---
     private fun askAI(question: String) {
         statusText.text = "Думаю..."
         
-        // Используем Pollinations - самый стабильный бесплатный шлюз
         val encodedQuestion = Uri.encode(question)
         val url = "https://text.pollinations.ai/$encodedQuestion?system=Ты%20Джарвис.%20Отвечай%20кратко%20и%20по%20делу."
         
@@ -355,7 +381,7 @@ class MainActivity : AppCompatActivity() {
                     if (response.isSuccessful) {
                         val answer = response.body?.string()?.trim() ?: "Я не знаю, что ответить."
                         runOnUiThread {
-                            statusText.text = answer
+                            statusText.text = "Джарвис: $answer"
                             speak(answer)
                         }
                     } else {
