@@ -40,12 +40,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var inputEditText: EditText
     private var timer: CountDownTimer? = null
     
-    // Настройки API (ВСТАВЬ СВОЙ ТОКЕН СЮДА!)
-    private val DEEPINFRA_TOKEN = "ВСТАВЬ_СЮДА_СВОЙ_ТОКЕН"
+    // Токен теперь хранится в памяти телефона
+    private var deepInfraToken: String = ""
     
-    // Умная память (контекст диалога)
     private val chatHistory = JSONArray()
-
     private val client = OkHttpClient.Builder().connectTimeout(60, TimeUnit.SECONDS).build()
     private val PERMISSION_REQUEST_CODE = 123
     private val IMAGE_PICK_CODE = 456
@@ -53,6 +51,10 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // Загружаем сохраненный токен
+        val prefs = getSharedPreferences("JarvisPrefs", MODE_PRIVATE)
+        deepInfraToken = prefs.getString("DEEPINFRA_TOKEN", "") ?: ""
+
         // --- ИНТЕРФЕЙС (Мессенджер) ---
         val mainLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -65,13 +67,25 @@ class MainActivity : AppCompatActivity() {
             setPadding(30, 30, 30, 30)
             gravity = Gravity.CENTER_VERTICAL
         }
+        
         val title = TextView(this).apply {
-            text = "J.A.R.V.I.S. (v0.11.0)"
+            text = "J.A.R.V.I.S. (v0.11.1)"
             textSize = 20f
             setTextColor(Color.CYAN)
             setTypeface(null, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
+        
+        // Кнопка настроек (Шестеренка)
+        val settingsBtn = Button(this).apply {
+            text = "⚙️"
+            setBackgroundColor(Color.TRANSPARENT)
+            setTextSize(20f)
+            setOnClickListener { showTokenDialog() }
+        }
+
         headerLayout.addView(title)
+        headerLayout.addView(settingsBtn)
 
         chatScrollView = ScrollView(this).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
@@ -142,6 +156,34 @@ class MainActivity : AppCompatActivity() {
         initSpeechRecognizer()
         
         addMessageToChat("Джарвис", "Все системы в норме. Мозг обновлен до Llama-3. Слушаю вас, сэр.", false)
+        
+        if (deepInfraToken.isEmpty()) {
+            addMessageToChat("Система", "Внимание: API-токен не установлен. Нажмите на шестеренку ⚙️ вверху справа, чтобы вставить ключ.", false)
+        }
+    }
+
+    // --- ДИАЛОГ ВВОДА ТОКЕНА ---
+    private fun showTokenDialog() {
+        val builder = android.app.AlertDialog.Builder(this)
+        builder.setTitle("Настройки ИИ (DeepInfra)")
+        builder.setMessage("Вставьте ваш API-токен с сайта deepinfra.com:")
+
+        val input = EditText(this).apply {
+            setText(deepInfraToken)
+            hint = "Токен..."
+            inputType = InputType.TYPE_CLASS_TEXT
+        }
+        builder.setView(input)
+
+        builder.setPositiveButton("Сохранить") { dialog, _ ->
+            deepInfraToken = input.text.toString().trim()
+            val prefs = getSharedPreferences("JarvisPrefs", MODE_PRIVATE)
+            prefs.edit().putString("DEEPINFRA_TOKEN", deepInfraToken).apply()
+            addMessageToChat("Система", "Токен успешно сохранен!", false)
+            dialog.dismiss()
+        }
+        builder.setNegativeButton("Отмена") { dialog, _ -> dialog.dismiss() }
+        builder.show()
     }
 
     // --- МЕТОДЫ ИНТЕРФЕЙСА ---
@@ -182,9 +224,9 @@ class MainActivity : AppCompatActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == IMAGE_PICK_CODE && resultCode == Activity.RESULT_OK) {
-            data?.data?.let { uri ->
+            data?.data?.let {
                 addMessageToChat("Вы", "📷 [Отправлено фото]", true)
-                askSmartAI("Я отправил тебе фото. Скажи, что ты видишь? (Пока ты не умеешь видеть, просто скажи, что модуль зрения в разработке, но ты рад меня слышать).")
+                askSmartAI("Я отправил тебе фото. Скажи, что ты видишь? (Если не видишь, скажи, что модуль зрения в разработке).")
             }
         }
     }
@@ -252,6 +294,10 @@ class MainActivity : AppCompatActivity() {
                 respondToAI("Открываю YouTube, сэр.", true)
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://youtube.com")))
             }
+            lower.contains("браузер") -> {
+                respondToAI("Открываю браузер, сэр.", true)
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://google.com")))
+            }
             else -> {
                 askSmartAI(command)
             }
@@ -272,54 +318,47 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    // --- САМЫЙ УМНЫЙ МОЗГ (DEEPINFRA LLAMA-3 70B) ---
+    // --- ИСПРАВЛЕННЫЙ МОЗГ (БЕЗ ВЫЛЕТОВ) ---
     private fun askSmartAI(question: String) {
-        if (DEEPINFRA_TOKEN == "d4fbae33623d0be8296291eba362ad65") {
-            respondToAI("Сэр, вы забыли вставить API-токен в код.", true)
+        if (deepInfraToken.isEmpty()) {
+            respondToAI("Сэр, сначала введите API-токен в настройках (⚙️ вверху).", true)
             return
         }
 
         try {
-            // 1. Добавляем сообщение пользователя в память
             val userMessage = JSONObject().apply {
                 put("role", "user")
                 put("content", question)
             }
             chatHistory.put(userMessage)
 
-            // Ограничиваем память последними 10 сообщениями, чтобы не перегружать сервер
             val messagesArray = JSONArray()
-            
-            // Системный промпт (Характер)
             messagesArray.put(JSONObject().apply {
                 put("role", "system")
-                put("content", "Ты — продвинутый ИИ-ассистент Джарвис. Ты вежлив, умен, обладаешь легким британским юмором. Обращайся к пользователю 'сэр'. Отвечай на русском языке, развернуто, но без лишней воды.")
+                put("content", "Ты — ИИ-ассистент Джарвис. Ты вежлив, умен, обращаешься 'сэр'. Отвечай на русском кратко.")
             })
 
-            // Добавляем историю (последние 10 сообщений)
             val startIdx = maxOf(0, chatHistory.length() - 10)
             for (i in startIdx until chatHistory.length()) {
                 messagesArray.put(chatHistory.getJSONObject(i))
             }
 
-            // 2. Формируем JSON для запроса
             val jsonBody = JSONObject().apply {
                 put("model", "meta-llama/Meta-Llama-3-70B-Instruct")
                 put("messages", messagesArray)
                 put("max_tokens", 300)
-                put("temperature", 0.7)
             }
 
             val requestBody = jsonBody.toString().toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
                 .url("https://api.deepinfra.com/v1/openai/chat/completions")
-                .addHeader("Authorization", "Bearer $DEEPINFRA_TOKEN")
+                .addHeader("Authorization", "Bearer $deepInfraToken") // <--- ИСПРАВЛЕНО
                 .post(requestBody)
                 .build()
 
             client.newCall(request).enqueue(object : Callback {
                 override fun onFailure(call: Call, e: IOException) {
-                    runOnUiThread { respondToAI("Ошибка соединения, сэр. Проверьте интернет.") }
+                    runOnUiThread { respondToAI("Ошибка сети: ${e.message}") }
                 }
 
                 override fun onResponse(call: Call, response: Response) {
@@ -333,7 +372,6 @@ class MainActivity : AppCompatActivity() {
                                     .getJSONObject("message")
                                     .getString("content")
 
-                                // Сохраняем ответ Джарвиса в память
                                 chatHistory.put(JSONObject().apply {
                                     put("role", "assistant")
                                     put("content", answer)
@@ -344,16 +382,19 @@ class MainActivity : AppCompatActivity() {
                                     speak(answer)
                                 }
                             } catch (e: Exception) {
-                                runOnUiThread { respondToAI("Не смог разобрать ответ нейросети.") }
+                                runOnUiThread { respondToAI("Ошибка чтения ответа ИИ.") }
                             }
                         } else {
-                            runOnUiThread { respondToAI("Сервер ИИ перегружен. Код: ${response.code}") }
+                            runOnUiThread { 
+                                // Показываем точную ошибку от сервера (например, если токен неверный)
+                                respondToAI("Ошибка сервера ${response.code}. Проверьте токен.") 
+                            }
                         }
                     }
                 }
             })
         } catch (e: Exception) {
-            respondToAI("Произошла ошибка при формировании запроса.")
+            respondToAI("Системная ошибка: ${e.message}")
         }
     }
 
