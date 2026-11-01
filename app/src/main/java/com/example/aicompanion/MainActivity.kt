@@ -22,6 +22,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
@@ -36,21 +40,25 @@ class MainActivity : AppCompatActivity() {
     private lateinit var inputEditText: EditText
     private var timer: CountDownTimer? = null
     
-    private val chatHistory = mutableListOf<String>()
-    private val client = OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS).build()
+    // Настройки API (ВСТАВЬ СВОЙ ТОКЕН СЮДА!)
+    private val DEEPINFRA_TOKEN = "ВСТАВЬ_СЮДА_СВОЙ_ТОКЕН"
+    
+    // Умная память (контекст диалога)
+    private val chatHistory = JSONArray()
+
+    private val client = OkHttpClient.Builder().connectTimeout(60, TimeUnit.SECONDS).build()
     private val PERMISSION_REQUEST_CODE = 123
     private val IMAGE_PICK_CODE = 456
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // --- ОСНОВНОЙ МАКЕТ (Экран чата) ---
+        // --- ИНТЕРФЕЙС (Мессенджер) ---
         val mainLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#121212")) // Темный фон как в Telegram
+            setBackgroundColor(Color.parseColor("#121212"))
         }
 
-        // 1. Верхняя панель (Header)
         val headerLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(Color.parseColor("#1E1E1E"))
@@ -58,14 +66,13 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         val title = TextView(this).apply {
-            text = "J.A.R.V.I.S. (v0.10.0)"
+            text = "J.A.R.V.I.S. (v0.11.0)"
             textSize = 20f
             setTextColor(Color.CYAN)
             setTypeface(null, Typeface.BOLD)
         }
         headerLayout.addView(title)
 
-        // 2. Область чата (Куда падают сообщения)
         chatScrollView = ScrollView(this).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
         }
@@ -75,7 +82,6 @@ class MainActivity : AppCompatActivity() {
         }
         chatScrollView.addView(chatContainer)
 
-        // 3. Панель ввода (Снизу)
         val inputLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(Color.parseColor("#1E1E1E"))
@@ -134,10 +140,11 @@ class MainActivity : AppCompatActivity() {
 
         initTts()
         initSpeechRecognizer()
-        addMessageToChat("Джарвис", "Система запущена. Чем могу помочь, сэр?", false)
+        
+        addMessageToChat("Джарвис", "Все системы в норме. Мозг обновлен до Llama-3. Слушаю вас, сэр.", false)
     }
 
-    // --- ДОБАВЛЕНИЕ СООБЩЕНИЯ В ЧАТ ---
+    // --- МЕТОДЫ ИНТЕРФЕЙСА ---
     private fun addMessageToChat(sender: String, message: String, isUser: Boolean) {
         val messageLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -147,9 +154,7 @@ class MainActivity : AppCompatActivity() {
 
         val bubbleLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(if (isUser) Color.parseColor("#007AFF") else Color.parseColor("#2C2C2C"))
             setPadding(30, 20, 30, 20)
-            // Закругляем углы
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(if (isUser) Color.parseColor("#007AFF") else Color.parseColor("#2C2C2C"))
                 cornerRadius = 40f
@@ -166,11 +171,9 @@ class MainActivity : AppCompatActivity() {
         messageLayout.addView(bubbleLayout)
         chatContainer.addView(messageLayout)
 
-        // Автоскролл вниз
         chatScrollView.post { chatScrollView.fullScroll(View.FOCUS_DOWN) }
     }
 
-    // --- ОТКРЫТИЕ ГАЛЕРЕИ (ФОТО) ---
     private fun openGallery() {
         val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
         startActivityForResult(intent, IMAGE_PICK_CODE)
@@ -181,13 +184,12 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == IMAGE_PICK_CODE && resultCode == Activity.RESULT_OK) {
             data?.data?.let { uri ->
                 addMessageToChat("Вы", "📷 [Отправлено фото]", true)
-                // Тут в будущем можно распознавать, что на фото, но пока ИИ просто скажет:
-                respondToAI("Пользователь отправил тебе картинку. Скажи что-то вроде 'Я вижу изображение, сэр, но пока не могу его распознать, так как мой модуль зрения в разработке'.")
+                askSmartAI("Я отправил тебе фото. Скажи, что ты видишь? (Пока ты не умеешь видеть, просто скажи, что модуль зрения в разработке, но ты рад меня слышать).")
             }
         }
     }
 
-    // --- ОЗВУЧКА И РАСПОЗНАВАНИЕ (Стандартные) ---
+    // --- ОЗВУЧКА И РАСПОЗНАВАНИЕ ---
     private fun initTts() {
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
@@ -234,7 +236,7 @@ class MainActivity : AppCompatActivity() {
         speechRecognizer?.startListening(intent)
     }
 
-    // --- ОБРАБОТКА КОМАНД И ИИ ---
+    // --- ОБРАБОТКА КОМАНД ---
     private fun handleCommand(command: String) {
         val lower = command.lowercase(Locale.getDefault())
         when {
@@ -270,33 +272,89 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    // --- САМЫЙ УМНЫЙ МОЗГ (DEEPINFRA LLAMA-3 70B) ---
     private fun askSmartAI(question: String) {
-        val systemPrompt = "Ты - Джарвис. Отвечай кратко, вежливо, называй пользователя 'сэр'."
-        val context = if (chatHistory.size > 4) chatHistory.takeLast(4).joinToString("\n") else chatHistory.joinToString("\n")
-        val fullPrompt = "$systemPrompt\n$context\nПользователь: $question\nДжарвис:"
-        
-        val url = "https://text.pollinations.ai/${Uri.encode(fullPrompt)}"
-        val request = Request.Builder().url(url).build()
+        if (DEEPINFRA_TOKEN == "d4fbae33623d0be8296291eba362ad65") {
+            respondToAI("Сэр, вы забыли вставить API-токен в код.", true)
+            return
+        }
 
-        client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                runOnUiThread { respondToAI("Связь потеряна, сэр.") }
+        try {
+            // 1. Добавляем сообщение пользователя в память
+            val userMessage = JSONObject().apply {
+                put("role", "user")
+                put("content", question)
+            }
+            chatHistory.put(userMessage)
+
+            // Ограничиваем память последними 10 сообщениями, чтобы не перегружать сервер
+            val messagesArray = JSONArray()
+            
+            // Системный промпт (Характер)
+            messagesArray.put(JSONObject().apply {
+                put("role", "system")
+                put("content", "Ты — продвинутый ИИ-ассистент Джарвис. Ты вежлив, умен, обладаешь легким британским юмором. Обращайся к пользователю 'сэр'. Отвечай на русском языке, развернуто, но без лишней воды.")
+            })
+
+            // Добавляем историю (последние 10 сообщений)
+            val startIdx = maxOf(0, chatHistory.length() - 10)
+            for (i in startIdx until chatHistory.length()) {
+                messagesArray.put(chatHistory.getJSONObject(i))
             }
 
-            override fun onResponse(call: Call, response: Response) {
-                response.use {
-                    if (response.isSuccessful) {
-                        val answer = response.body?.string()?.trim() ?: "Нет ответа."
-                        chatHistory.add("Вы: $question")
-                        chatHistory.add("Джарвис: $answer")
-                        runOnUiThread {
-                            addMessageToChat("Джарвис", answer, false)
-                            speak(answer)
+            // 2. Формируем JSON для запроса
+            val jsonBody = JSONObject().apply {
+                put("model", "meta-llama/Meta-Llama-3-70B-Instruct")
+                put("messages", messagesArray)
+                put("max_tokens", 300)
+                put("temperature", 0.7)
+            }
+
+            val requestBody = jsonBody.toString().toRequestBody("application/json".toMediaType())
+            val request = Request.Builder()
+                .url("https://api.deepinfra.com/v1/openai/chat/completions")
+                .addHeader("Authorization", "Bearer $DEEPINFRA_TOKEN")
+                .post(requestBody)
+                .build()
+
+            client.newCall(request).enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    runOnUiThread { respondToAI("Ошибка соединения, сэр. Проверьте интернет.") }
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    response.use {
+                        if (response.isSuccessful) {
+                            val responseData = response.body?.string()
+                            try {
+                                val jsonObject = JSONObject(responseData!!)
+                                val answer = jsonObject.getJSONArray("choices")
+                                    .getJSONObject(0)
+                                    .getJSONObject("message")
+                                    .getString("content")
+
+                                // Сохраняем ответ Джарвиса в память
+                                chatHistory.put(JSONObject().apply {
+                                    put("role", "assistant")
+                                    put("content", answer)
+                                })
+
+                                runOnUiThread {
+                                    addMessageToChat("Джарвис", answer, false)
+                                    speak(answer)
+                                }
+                            } catch (e: Exception) {
+                                runOnUiThread { respondToAI("Не смог разобрать ответ нейросети.") }
+                            }
+                        } else {
+                            runOnUiThread { respondToAI("Сервер ИИ перегружен. Код: ${response.code}") }
                         }
                     }
                 }
-            }
-        })
+            })
+        } catch (e: Exception) {
+            respondToAI("Произошла ошибка при формировании запроса.")
+        }
     }
 
     // --- РАЗРЕШЕНИЯ ---
