@@ -40,22 +40,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var inputEditText: EditText
     private var timer: CountDownTimer? = null
     
-    // Токен теперь хранится в памяти телефона
-    private var deepInfraToken: String = ""
-    
     private val chatHistory = JSONArray()
-    private val client = OkHttpClient.Builder().connectTimeout(60, TimeUnit.SECONDS).build()
+    private val client = OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS).build()
     private val PERMISSION_REQUEST_CODE = 123
     private val IMAGE_PICK_CODE = 456
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Загружаем сохраненный токен
-        val prefs = getSharedPreferences("JarvisPrefs", MODE_PRIVATE)
-        deepInfraToken = prefs.getString("DEEPINFRA_TOKEN", "") ?: ""
-
-        // --- ИНТЕРФЕЙС (Мессенджер) ---
+        // --- ИНТЕРФЕЙС ---
         val mainLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#121212"))
@@ -69,23 +62,13 @@ class MainActivity : AppCompatActivity() {
         }
         
         val title = TextView(this).apply {
-            text = "J.A.R.V.I.S. (v0.11.1)"
+            text = "J.A.R.V.I.S. (v0.11.2 Free)"
             textSize = 20f
             setTextColor(Color.CYAN)
             setTypeface(null, Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        
-        // Кнопка настроек (Шестеренка)
-        val settingsBtn = Button(this).apply {
-            text = "⚙️"
-            setBackgroundColor(Color.TRANSPARENT)
-            setTextSize(20f)
-            setOnClickListener { showTokenDialog() }
         }
 
         headerLayout.addView(title)
-        headerLayout.addView(settingsBtn)
 
         chatScrollView = ScrollView(this).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
@@ -155,35 +138,7 @@ class MainActivity : AppCompatActivity() {
         initTts()
         initSpeechRecognizer()
         
-        addMessageToChat("Джарвис", "Все системы в норме. Мозг обновлен до Llama-3. Слушаю вас, сэр.", false)
-        
-        if (deepInfraToken.isEmpty()) {
-            addMessageToChat("Система", "Внимание: API-токен не установлен. Нажмите на шестеренку ⚙️ вверху справа, чтобы вставить ключ.", false)
-        }
-    }
-
-    // --- ДИАЛОГ ВВОДА ТОКЕНА ---
-    private fun showTokenDialog() {
-        val builder = android.app.AlertDialog.Builder(this)
-        builder.setTitle("Настройки ИИ (DeepInfra)")
-        builder.setMessage("Вставьте ваш API-токен с сайта deepinfra.com:")
-
-        val input = EditText(this).apply {
-            setText(deepInfraToken)
-            hint = "Токен..."
-            inputType = InputType.TYPE_CLASS_TEXT
-        }
-        builder.setView(input)
-
-        builder.setPositiveButton("Сохранить") { dialog, _ ->
-            deepInfraToken = input.text.toString().trim()
-            val prefs = getSharedPreferences("JarvisPrefs", MODE_PRIVATE)
-            prefs.edit().putString("DEEPINFRA_TOKEN", deepInfraToken).apply()
-            addMessageToChat("Система", "Токен успешно сохранен!", false)
-            dialog.dismiss()
-        }
-        builder.setNegativeButton("Отмена") { dialog, _ -> dialog.dismiss() }
-        builder.show()
+        addMessageToChat("Джарвис", "Все системы в норме. Мозг переведен на бесплатные рельсы. Слушаю вас, сэр.", false)
     }
 
     // --- МЕТОДЫ ИНТЕРФЕЙСА ---
@@ -226,7 +181,7 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == IMAGE_PICK_CODE && resultCode == Activity.RESULT_OK) {
             data?.data?.let {
                 addMessageToChat("Вы", "📷 [Отправлено фото]", true)
-                askSmartAI("Я отправил тебе фото. Скажи, что ты видишь? (Если не видишь, скажи, что модуль зрения в разработке).")
+                askSmartAI("Я отправил тебе фото. Скажи, что ты видишь? (Пока не умеешь видеть, скажи что модуль зрения в разработке).")
             }
         }
     }
@@ -318,19 +273,14 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    // --- ИСПРАВЛЕННЫЙ МОЗГ (БЕЗ ВЫЛЕТОВ) ---
+    // --- БЕСПЛАТНЫЙ ИИ (PUTER.JS) ---
     private fun askSmartAI(question: String) {
-        if (deepInfraToken.isEmpty()) {
-            respondToAI("Сэр, сначала введите API-токен в настройках (⚙️ вверху).", true)
-            return
-        }
-
         try {
-            val userMessage = JSONObject().apply {
+            // Добавляем в память
+            chatHistory.put(JSONObject().apply {
                 put("role", "user")
                 put("content", question)
-            }
-            chatHistory.put(userMessage)
+            })
 
             val messagesArray = JSONArray()
             messagesArray.put(JSONObject().apply {
@@ -338,27 +288,26 @@ class MainActivity : AppCompatActivity() {
                 put("content", "Ты — ИИ-ассистент Джарвис. Ты вежлив, умен, обращаешься 'сэр'. Отвечай на русском кратко.")
             })
 
-            val startIdx = maxOf(0, chatHistory.length() - 10)
+            val startIdx = maxOf(0, chatHistory.length() - 6)
             for (i in startIdx until chatHistory.length()) {
                 messagesArray.put(chatHistory.getJSONObject(i))
             }
 
             val jsonBody = JSONObject().apply {
-                put("model", "meta-llama/Meta-Llama-3-70B-Instruct")
                 put("messages", messagesArray)
-                put("max_tokens", 300)
             }
 
             val requestBody = jsonBody.toString().toRequestBody("application/json".toMediaType())
+            
+            // Бесплатный API Puter.js (работает как прокси к GPT-4)
             val request = Request.Builder()
-                .url("https://api.deepinfra.com/v1/openai/chat/completions")
-                .addHeader("Authorization", "Bearer $deepInfraToken") // <--- ИСПРАВЛЕНО
+                .url("https://api.puter.com/drivers/call")
                 .post(requestBody)
                 .build()
 
             client.newCall(request).enqueue(object : Callback {
                 override fun onFailure(call: Call, e: IOException) {
-                    runOnUiThread { respondToAI("Ошибка сети: ${e.message}") }
+                    runOnUiThread { fallbackAI(question) } // Если Puter упал, идем в резерв
                 }
 
                 override fun onResponse(call: Call, response: Response) {
@@ -367,11 +316,8 @@ class MainActivity : AppCompatActivity() {
                             val responseData = response.body?.string()
                             try {
                                 val jsonObject = JSONObject(responseData!!)
-                                val answer = jsonObject.getJSONArray("choices")
-                                    .getJSONObject(0)
-                                    .getJSONObject("message")
-                                    .getString("content")
-
+                                val answer = jsonObject.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
+                                
                                 chatHistory.put(JSONObject().apply {
                                     put("role", "assistant")
                                     put("content", answer)
@@ -382,20 +328,51 @@ class MainActivity : AppCompatActivity() {
                                     speak(answer)
                                 }
                             } catch (e: Exception) {
-                                runOnUiThread { respondToAI("Ошибка чтения ответа ИИ.") }
+                                runOnUiThread { fallbackAI(question) }
                             }
                         } else {
-                            runOnUiThread { 
-                                // Показываем точную ошибку от сервера (например, если токен неверный)
-                                respondToAI("Ошибка сервера ${response.code}. Проверьте токен.") 
-                            }
+                            runOnUiThread { fallbackAI(question) }
                         }
                     }
                 }
             })
         } catch (e: Exception) {
-            respondToAI("Системная ошибка: ${e.message}")
+            fallbackAI(question)
         }
+    }
+
+    // --- РЕЗЕРВНЫЙ БЕСПЛАТНЫЙ ИИ (POLLINATIONS) ---
+    private fun fallbackAI(question: String) {
+        val systemPrompt = "Ты - Джарвис. Отвечай кратко, вежливо, называй пользователя 'сэр'."
+        val context = chatHistory.toString() // Упрощенный контекст
+        val fullPrompt = "$systemPrompt\nПользователь: $question\nДжарвис:"
+        
+        val url = "https://text.pollinations.ai/${Uri.encode(fullPrompt)}"
+        val request = Request.Builder().url(url).build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                runOnUiThread { respondToAI("Связь потеряна, сэр. Проверьте интернет.") }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    if (response.isSuccessful) {
+                        val answer = response.body?.string()?.trim() ?: "Я не знаю, что ответить."
+                        chatHistory.put(JSONObject().apply {
+                            put("role", "assistant")
+                            put("content", answer)
+                        })
+                        runOnUiThread {
+                            addMessageToChat("Джарвис", answer, false)
+                            speak(answer)
+                        }
+                    } else {
+                        runOnUiThread { respondToAI("Нейросети перегружены, сэр. Попробуйте позже.") }
+                    }
+                }
+            }
+        })
     }
 
     // --- РАЗРЕШЕНИЯ ---
