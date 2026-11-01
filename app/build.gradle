@@ -14,7 +14,7 @@ android {
         
         // ТВОЯ НОВАЯ ВЕРСИЯ
         versionCode 11
-versionName "0.10.0"
+versionName "0.11.1"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         
