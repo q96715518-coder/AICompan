@@ -16,7 +16,6 @@ import android.view.Gravity
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -37,15 +36,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusText: TextView
     private var timer: CountDownTimer? = null
     
-    // Настройки OkHttp для запросов к ИИ
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
         .build()
-
-    // ВСТАВЬ СЮДА СВОЙ API КЛЮЧ OPENAI
-    private val OPENAI_API_KEY = "sk-..." 
 
     private val PERMISSION_REQUEST_CODE = 123
 
@@ -67,7 +61,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val versionText = TextView(this).apply {
-            text = "v0.8.0"
+            text = "v0.8.1 Free AI"
             textSize = 14f
             setTextColor(Color.GRAY)
             gravity = Gravity.CENTER
@@ -102,7 +96,7 @@ class MainActivity : AppCompatActivity() {
         initSpeechRecognizer()
     }
 
-    // --- ОЗВУЧКА (С НАСТРОЙКОЙ ГОЛОСА) ---
+    // --- ОЗВУЧКА ---
     private fun initTts() {
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
@@ -117,7 +111,7 @@ class MainActivity : AppCompatActivity() {
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "JarvisUtteranceId")
     }
 
-    // --- РАСПОЗНАВАНИЕ РЕЧИ ---
+    // --- РАСПОЗНАВАНИЕ ---
     private fun initSpeechRecognizer() {
         if (SpeechRecognizer.isRecognitionAvailable(this)) {
             speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
@@ -154,19 +148,16 @@ class MainActivity : AppCompatActivity() {
     // --- ОБРАБОТКА КОМАНД ---
     private fun handleCommand(command: String) {
         when {
-            // 1. Время и дата
             command.contains("время") -> {
                 val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                 speak("Сейчас $time")
                 statusText.text = "Время: $time"
             }
-            command.contains("дата") || command.contains("какое сегодня число") -> {
+            command.contains("дата") || command.contains("число") -> {
                 val date = SimpleDateFormat("d MMMM yyyy", Locale("ru")).format(Date())
                 speak("Сегодня $date")
                 statusText.text = "Дата: $date"
             }
-
-            // 2. Приложения (как раньше)
             command.contains("браузер") -> {
                 speak("Открываю браузер")
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com")))
@@ -195,8 +186,6 @@ class MainActivity : AppCompatActivity() {
                 speak("Открываю YouTube")
                 openApp("com.google.android.youtube", "https://youtube.com")
             }
-
-            // 3. Таймер
             command.contains("таймер") -> {
                 speak("На сколько минут поставить таймер?")
                 statusText.text = "Скажите количество минут..."
@@ -208,15 +197,13 @@ class MainActivity : AppCompatActivity() {
                 speak("Таймер отменен")
                 statusText.text = "Таймер отменен"
             }
-
-            // 4. УМНЫЙ РЕЖИМ (Если команда не распознана, спрашиваем ИИ)
+            // Если ничего не подошло - идем к бесплатному ИИ
             else -> {
-                askAI(command)
+                askFreeAI(command)
             }
         }
     }
 
-    // --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ОТКРЫТИЯ ПРИЛОЖЕНИЙ ---
     private fun openApp(packageName: String, fallbackUrl: String? = null) {
         val intent = packageManager.getLaunchIntentForPackage(packageName)
         if (intent != null) {
@@ -225,13 +212,12 @@ class MainActivity : AppCompatActivity() {
             if (fallbackUrl != null) {
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fallbackUrl)))
             } else {
-                speak("Извините, это приложение не установлено на вашем устройстве.")
+                speak("Извините, это приложение не установлено.")
                 statusText.text = "Приложение не найдено"
             }
         }
     }
 
-    // --- ТАЙМЕР ---
     private fun startTimer(minutes: Int) {
         timer?.cancel()
         val millisInFuture = minutes * 60 * 1000L
@@ -241,9 +227,7 @@ class MainActivity : AppCompatActivity() {
         timer = object : CountDownTimer(millisInFuture, 1000) {
             override fun onTick(millisUntilFinished: Long) {
                 val seconds = millisUntilFinished / 1000
-                val m = seconds / 60
-                val s = seconds % 60
-                statusText.text = String.format("Осталось: %02d:%02d", m, s)
+                statusText.text = String.format("Осталось: %02d:%02d", seconds / 60, seconds % 60)
             }
             override fun onFinish() {
                 speak("Время вышло!")
@@ -252,22 +236,15 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    // --- МОЗГ: ЗАПРОС К OPENAI ---
-    private fun askAI(question: String) {
+    // --- БЕСПЛАТНЫЙ ИИ (PUTER.JS) ---
+    private fun askFreeAI(question: String) {
         statusText.text = "Думаю..."
         
-        // Если ключ не вставлен, выдаем ошибку
-        if (OPENAI_API_KEY == "sk-...") {
-            speak("Извините, мой искусственный интеллект не настроен.")
-            statusText.text = "Нужен API ключ OpenAI"
-            return
-        }
-
+        // Бесплатный API от Puter. Он не требует ключей и токенов.
         val json = """
             {
-                "model": "gpt-3.5-turbo",
                 "messages": [
-                    {"role": "system", "content": "Ты - Джарвис, умный и вежливый голосовой ассистент. Отвечай кратко и по делу, максимум 2-3 предложения."},
+                    {"role": "system", "content": "Ты - Джарвис, умный голосовой ассистент. Отвечай кратко, максимум 2-3 предложения."},
                     {"role": "user", "content": "$question"}
                 ]
             }
@@ -275,15 +252,14 @@ class MainActivity : AppCompatActivity() {
 
         val requestBody = json.toRequestBody("application/json".toMediaType())
         val request = Request.Builder()
-            .url("https://api.openai.com/v1/chat/completions")
-            .addHeader("Authorization", "Bearer $OPENAI_API_KEY")
+            .url("https://api.puter.com/drivers/call") // Бесплатный шлюз
             .post(requestBody)
             .build()
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 runOnUiThread {
-                    speak("Ошибка сети. Не могу связаться с сервером.")
+                    speak("Ошибка сети. Попробуйте позже.")
                     statusText.text = "Ошибка сети"
                 }
             }
@@ -292,8 +268,8 @@ class MainActivity : AppCompatActivity() {
                 response.use {
                     if (!response.isSuccessful) {
                         runOnUiThread {
-                            speak("Ошибка сервера. Возможно, проблема с ключом.")
-                            statusText.text = "Ошибка API"
+                            // Если Puter не ответил, используем резервный бесплатный API
+                            fallbackAI(question)
                         }
                         return
                     }
@@ -310,8 +286,37 @@ class MainActivity : AppCompatActivity() {
                             speak(answer)
                         }
                     } catch (e: Exception) {
+                        runOnUiThread { fallbackAI(question) }
+                    }
+                }
+            }
+        })
+    }
+
+    // Резервный бесплатный API (если первый не сработал)
+    private fun fallbackAI(question: String) {
+        val url = "https://text.pollinations.ai/${Uri.encode(question)}?system=Ты%20Джарвис,%20отвечай%20кратко%20и%20по%20делу."
+        val request = Request.Builder().url(url).build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                runOnUiThread {
+                    speak("Мозг недоступен. Проверьте интернет.")
+                    statusText.text = "Нет связи с ИИ"
+                }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    if (response.isSuccessful) {
+                        val answer = response.body?.string() ?: "Пустой ответ"
                         runOnUiThread {
-                            speak("Не смог разобрать ответ.")
+                            statusText.text = "Джарвис: $answer"
+                            speak(answer)
+                        }
+                    } else {
+                        runOnUiThread {
+                            speak("Я не могу ответить на этот вопрос.")
                         }
                     }
                 }
